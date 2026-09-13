@@ -103,7 +103,7 @@ class RecordingConfig:
     playback_speed: float = 1.0
     skip_dead_time: bool = True
     capture_mode: str = "crosshair"
-    show_killfeed: bool = False
+    show_killfeed: bool = True
     close_game_when_done: bool = True
     open_output_folder: bool = True
     single_file: bool = False

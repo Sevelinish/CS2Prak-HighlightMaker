@@ -31,7 +31,7 @@
     "playbackSpeed": 1.0,
     "skipDeadTime": true,
     "captureMode": "crosshair",
-    "showKillfeed": false,
+    "showKillfeed": true,
     "closeGameWhenDone": true,
     "openOutputFolder": true,
     "singleFile": false
