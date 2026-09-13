@@ -70,7 +70,7 @@ def test_a_user_set_flag_is_preserved(tmp_path: Path):
 
 def test_config_debug_turns_console_output_verbose(tmp_path: Path):
     LoggingConfigurator(tmp_path, verbose=False).configure()
-    assert console_level() == logging.INFO
+    assert console_level() == logging.WARNING
 
     stub_application(verbose=False, logs=tmp_path)._apply_debug_setting(
         ApplicationConfig(debug=True)
@@ -84,7 +84,28 @@ def test_config_debug_off_leaves_the_console_quiet(tmp_path: Path):
 
     stub_application(verbose=False, logs=tmp_path)._apply_debug_setting(ApplicationConfig())
 
-    assert console_level() == logging.INFO
+    assert console_level() == logging.WARNING
+
+
+def test_info_lines_stay_off_the_console_when_debug_is_off(tmp_path: Path):
+    LoggingConfigurator(tmp_path, verbose=False).configure()
+
+    assert console_level() > logging.INFO
+
+
+def test_warnings_still_reach_the_console(tmp_path: Path):
+    LoggingConfigurator(tmp_path, verbose=False).configure()
+
+    assert console_level() <= logging.WARNING
+
+
+def test_the_file_keeps_everything_regardless(tmp_path: Path):
+    LoggingConfigurator(tmp_path, verbose=False).configure()
+    logger = logging.getLogger(LOGGER_NAME)
+    files = [h for h in logger.handlers if isinstance(h, logging.FileHandler)]
+
+    assert files
+    assert files[0].level == logging.DEBUG
 
 
 def test_the_verbose_flag_is_not_downgraded_by_the_config(tmp_path: Path):
@@ -99,3 +120,24 @@ def test_the_verbose_flag_is_not_downgraded_by_the_config(tmp_path: Path):
 def restore_logging(tmp_path: Path):
     yield
     LoggingConfigurator(tmp_path, verbose=False).configure()
+
+
+def test_repository_reports_a_migration(tmp_path: Path):
+    config_file = tmp_path / "config.json"
+    config_file.write_text(json.dumps({"version": 1}), encoding="utf-8")
+
+    repository = ConfigRepository(config_file)
+    repository.load()
+
+    assert repository.migrated is True
+
+
+def test_repository_reports_no_migration_for_a_current_config(tmp_path: Path):
+    config_file = tmp_path / "config.json"
+    repository = ConfigRepository(config_file)
+    repository.load()
+
+    fresh = ConfigRepository(config_file)
+    fresh.load()
+
+    assert fresh.migrated is False

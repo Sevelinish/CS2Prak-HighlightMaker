@@ -6,7 +6,7 @@ from rich.console import Console
 from rich.panel import Panel
 
 from .config.repository import ConfigRepository
-from .config.schema import ApplicationConfig
+from .config.schema import CONFIG_VERSION, ApplicationConfig
 from .demo.locator import DemoLocator
 from .demo.reader import DemoReader
 from .detection.engine import HighlightEngine
@@ -65,8 +65,13 @@ class Application:
             return EXIT_FAILURE
 
     def _execute(self) -> int:
-        config = ConfigRepository(self._paths.config_file).load()
+        repository = ConfigRepository(self._paths.config_file)
+        config = repository.load()
         self._apply_debug_setting(config)
+        if repository.migrated:
+            self._console.print(
+                f"[muted]config.json upgraded to version {CONFIG_VERSION}[/muted]"
+            )
         installation = Cs2Installation.discover(config.paths.cs2_directory)
         reporter = StepReporter(self._console, self._total_steps())
 

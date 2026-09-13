@@ -6,6 +6,7 @@ from pathlib import Path
 from rich.logging import RichHandler
 
 LOGGER_NAME = "highlighter"
+QUIET_CONSOLE_LEVEL = logging.WARNING
 
 
 class LoggingConfigurator:
@@ -27,7 +28,9 @@ class LoggingConfigurator:
             show_time=False,
             markup=True,
         )
-        console_handler.setLevel(logging.DEBUG if self._verbose else logging.INFO)
+        console_handler.setLevel(
+            logging.DEBUG if self._verbose else QUIET_CONSOLE_LEVEL
+        )
         console_handler.setFormatter(logging.Formatter("%(message)s"))
 
         file_handler = logging.FileHandler(

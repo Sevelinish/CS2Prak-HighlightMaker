@@ -11,6 +11,11 @@ from .schema import ApplicationConfig
 class ConfigRepository:
     def __init__(self, config_file: Path) -> None:
         self._config_file = config_file
+        self._migrated = False
+
+    @property
+    def migrated(self) -> bool:
+        return self._migrated
 
     @property
     def config_file(self) -> Path:
@@ -32,9 +37,9 @@ class ConfigRepository:
         if not isinstance(raw, dict):
             raise ConfigurationError("config.json must contain a JSON object")
 
-        migrated = ConfigMigrator().migrate(raw)
+        self._migrated = ConfigMigrator().migrate(raw)
         config = ApplicationConfig.from_mapping(raw)
-        if migrated or raw != config.to_mapping():
+        if self._migrated or raw != config.to_mapping():
             self.save(config)
         return config
 

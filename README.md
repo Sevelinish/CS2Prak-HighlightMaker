@@ -4,8 +4,6 @@ Finds the good moments in Counter-Strike 2 demos and records them as ready `.mp4
 
 You hand it a `.dem`, pick the moments you want from a table, and collect the finished clips. No CSDM and no outdated plugins: demo parsing runs on `demoparser2` with a Rust core, recording goes through HLAE, muxing through ffmpeg.
 
-[Русская версия](README.ru.md)
-
 ```
 demo.dem  ->  parse  ->  detect  ->  table in the console  ->  pick moments
                                                                    |
@@ -164,7 +162,9 @@ The `version` key is the schema version. When it grows, migrations run: only the
 
 Set it to `true` when something goes wrong and you need the details: the HLAE command line, the environment variables, the chosen encoder, the resolved player slots, the segment boundaries. The `-v` flag does the same thing, and it wins: it turns the output on even when `debug` is `false`.
 
-The `logs/highlighter.log` file always receives the details. This flag only controls whether you see them on screen.
+With `debug` off the console shows only the step output. Warnings and errors still come through, since those are things you need to see, but routine progress chatter stays out of the way.
+
+The `logs/highlighter.log` file always receives everything down to `DEBUG`, whatever this flag says. It only controls what reaches the screen.
 
 ### `paths`
 
