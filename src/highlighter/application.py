@@ -1,0 +1,276 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from rich.console import Console
+from rich.panel import Panel
+
+from .config.repository import ConfigRepository
+from .config.schema import ApplicationConfig
+from .demo.locator import DemoLocator
+from .demo.reader import DemoReader
+from .detection.engine import HighlightEngine
+from .detection.player_filter import PlayerResolver
+from .domain.highlight import Highlight
+from .domain.match import Match
+from .domain.player import Player
+from .game.installation import Cs2Installation
+from .infrastructure.errors import HighlighterError
+from .infrastructure.logging import LoggingConfigurator
+from .infrastructure.paths import ApplicationPaths
+from .media.assembler import AssembledClip
+from .media.folder_opener import FolderOpener
+from .plan.builder import RecordingPlanBuilder
+from .plan.models import RecordingPlan
+from .plan.writer import RecordingPlanWriter
+from .presentation.demo_picker import DemoPicker
+from .presentation.highlight_table import HighlightTable
+from .presentation.selector import HighlightSelector
+from .presentation.steps import StepReporter
+from .presentation.theme import build_console
+from .provisioning.toolchain import ToolchainProvisioner
+from .recording.session import RecordingSession
+
+BANNER = "[brand]HighlighterCS2[/brand] [muted]CS2 demo highlight recorder[/muted]"
+BASE_STEPS = 7
+PLAYER_LOOKUP_STEP = 1
+EXIT_SUCCESS = 0
+EXIT_FAILURE = 1
+
+
+class Application:
+    def __init__(
+        self,
+        demo_argument: str | None = None,
+        player_query: str | None = None,
+        verbose: bool = False,
+    ) -> None:
+        self._paths = ApplicationPaths.discover()
+        self._console: Console = build_console()
+        self._demo_argument = demo_argument
+        self._player_query = player_query
+        self._verbose = verbose
+        self._logger = LoggingConfigurator(self._paths.logs, verbose).configure()
+
+    def run(self) -> int:
+        self._console.print(Panel(BANNER, border_style="muted", expand=False))
+        try:
+            return self._execute()
+        except HighlighterError as error:
+            self._console.print(f"[danger]{error}[/danger]")
+            self._logger.debug("Aborted", exc_info=True)
+            return EXIT_FAILURE
+        except KeyboardInterrupt:
+            self._console.print("\n[warning]Cancelled[/warning]")
+            return EXIT_FAILURE
+
+    def _execute(self) -> int:
+        config = ConfigRepository(self._paths.config_file).load()
+        self._apply_debug_setting(config)
+        installation = Cs2Installation.discover(config.paths.cs2_directory)
+        reporter = StepReporter(self._console, self._total_steps())
+
+        demo_path = self._resolve_demo(config, installation)
+        if demo_path is None:
+            self._console.print("[warning]No demo selected[/warning]")
+            return EXIT_SUCCESS
+
+        match = self._read_demo(demo_path, config, reporter)
+        target = self._resolve_player(match, reporter)
+        highlights = self._detect(match, config, target, reporter)
+        if not highlights:
+            self._console.print(
+                "[warning]Nothing passed the score threshold. "
+                "Lower detection.minimumScore in config.json.[/warning]"
+            )
+            return EXIT_SUCCESS
+
+        HighlightTable(self._console, match).render(highlights)
+        selected = HighlightSelector(self._console).select(highlights)
+        if not selected:
+            self._console.print("[warning]Nothing selected[/warning]")
+            return EXIT_SUCCESS
+
+        plan = self._build_plan(match, selected, config, reporter)
+        assembled = self._record(plan, config, installation, reporter)
+        self._open_folder(plan, assembled, config, reporter)
+        self._report(assembled, plan)
+        return EXIT_SUCCESS
+
+    def _apply_debug_setting(self, config: ApplicationConfig) -> None:
+        if self._verbose or not config.debug:
+            return
+        self._logger = LoggingConfigurator(self._paths.logs, verbose=True).configure()
+        self._logger.debug("Debug output enabled by config.json")
+
+    def _total_steps(self) -> int:
+        return BASE_STEPS + (PLAYER_LOOKUP_STEP if self._player_query else 0)
+
+    def _resolve_demo(
+        self, config: ApplicationConfig, installation: Cs2Installation
+    ) -> Path | None:
+        locator = self._build_locator(config, installation)
+        if self._demo_argument:
+            return self._named_demo(locator)
+
+        demos = locator.discover()
+        if not demos:
+            raise HighlighterError(
+                f"No .dem files found. Put demos in "
+                f"{self._paths.resolve(config.paths.demo_directory)}"
+            )
+        return DemoPicker(self._console).pick(demos)
+
+    def _build_locator(
+        self, config: ApplicationConfig, installation: Cs2Installation
+    ) -> DemoLocator:
+        directories = [self._paths.resolve(config.paths.demo_directory)]
+        directories.extend(installation.demo_directories())
+        return DemoLocator(directories)
+
+    def _named_demo(self, locator: DemoLocator) -> Path:
+        given = self._demo_argument or ""
+        direct = self._paths.resolve(given)
+        if DemoLocator.is_demo(direct):
+            return direct
+
+        found = locator.find_by_name(Path(given).name)
+        if found is not None:
+            return found
+
+        searched = "\n  ".join(str(folder) for folder in locator.search_directories)
+        raise HighlighterError(
+            f"No demo called '{given}'. Looked next to the exe and in:\n  {searched}"
+        )
+
+    def _read_demo(
+        self, demo_path: Path, config: ApplicationConfig, reporter: StepReporter
+    ) -> Match:
+        reporter.begin(f"Reading {demo_path.name}")
+        try:
+            match = DemoReader(demo_path, config.game.tick_rate).read()
+        except BaseException:
+            reporter.fail()
+            raise
+        reporter.done(
+            f"{match.map_name}, {match.round_count} rounds, {len(match.players)} players"
+        )
+        return match
+
+    def _resolve_player(self, match: Match, reporter: StepReporter) -> Player | None:
+        if not self._player_query:
+            return None
+
+        reporter.begin(f"Looking up '{self._player_query}'")
+        try:
+            player = PlayerResolver(match).resolve(self._player_query)
+        except BaseException:
+            reporter.fail()
+            raise
+        reporter.done(f"{player.name} (slot {player.slot})")
+        return player
+
+    def _detect(
+        self,
+        match: Match,
+        config: ApplicationConfig,
+        target: Player | None,
+        reporter: StepReporter,
+    ) -> list[Highlight]:
+        scope = f" for {target.name}" if target is not None else ""
+        reporter.begin(f"Scanning for highlights{scope}")
+        try:
+            highlights = HighlightEngine(config.detection).detect(
+                match, target.steam_id64 if target is not None else None
+            )
+        except BaseException:
+            reporter.fail()
+            raise
+        reporter.done(f"{len(highlights)} found")
+        return highlights
+
+    def _build_plan(
+        self,
+        match: Match,
+        selected: list[Highlight],
+        config: ApplicationConfig,
+        reporter: StepReporter,
+    ) -> RecordingPlan:
+        reporter.begin("Planning clips")
+        output_root = self._paths.resolve(config.paths.output_directory)
+        plan = RecordingPlanBuilder(config.recording).build(match, selected, output_root)
+
+        work_directory = self._paths.resolve(config.paths.work_directory)
+        plan_file = RecordingPlanWriter(work_directory / "plans").write(plan)
+        reporter.detail(str(plan_file))
+        reporter.done(
+            f"{plan.clip_count} clips, "
+            f"{sum(len(clip.segments) for clip in plan.clips)} segments, "
+            f"{plan.total_seconds:.0f}s of footage"
+        )
+        return plan
+
+    def _record(
+        self,
+        plan: RecordingPlan,
+        config: ApplicationConfig,
+        installation: Cs2Installation,
+        reporter: StepReporter,
+    ) -> list[AssembledClip]:
+        tools_directory = self._paths.resolve(config.paths.tools_directory)
+        toolchain = ToolchainProvisioner(
+            self._console,
+            config.paths,
+            config.toolchain,
+            tools_directory,
+            config.game.hook_dll_relative_path,
+        ).provision()
+
+        session = RecordingSession(
+            console=self._console,
+            config=config,
+            installation=installation,
+            toolchain=toolchain,
+            work_directory=self._paths.resolve(config.paths.work_directory),
+            output_root=self._paths.resolve(config.paths.output_directory),
+        )
+        return session.execute(plan, reporter)
+
+    def _open_folder(
+        self,
+        plan: RecordingPlan,
+        assembled: list[AssembledClip],
+        config: ApplicationConfig,
+        reporter: StepReporter,
+    ) -> None:
+        reporter.begin("Opening the output folder")
+        if not assembled:
+            reporter.done("skipped, nothing was written")
+            return
+
+        folder = plan.output_directory / plan.demo_name
+        opened = FolderOpener(config.recording.open_output_folder).open(folder)
+        reporter.done(str(folder) if opened else f"not opened: {folder}")
+
+    def _report(self, assembled: list[AssembledClip], plan: RecordingPlan) -> None:
+        if not assembled:
+            self._console.print(
+                "\n[danger]No clips were produced. "
+                "Check logs/highlighter.log for details.[/danger]"
+            )
+            return
+
+        self._console.print()
+        for clip in assembled:
+            segments = (
+                f" [muted]{clip.segment_count} segments[/muted]"
+                if clip.segment_count > 1
+                else ""
+            )
+            audio = "" if clip.has_audio else " [muted](no audio)[/muted]"
+            self._console.print(f"  [success]OK[/success] {clip.output.name}{segments}{audio}")
+
+        self._console.print(
+            f"\n[success]{len(assembled)}/{plan.clip_count} clips saved to[/success] "
+            f"{plan.output_directory / plan.demo_name}"
+        )

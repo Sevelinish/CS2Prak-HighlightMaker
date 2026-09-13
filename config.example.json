@@ -1,0 +1,159 @@
+{
+  "version": 7,
+  "debug": false,
+  "paths": {
+    "cs2Directory": "",
+    "hlaeExecutable": "",
+    "ffmpegExecutable": "",
+    "demoDirectory": "demos",
+    "outputDirectory": "Highlighter",
+    "toolsDirectory": "tools",
+    "workDirectory": "work"
+  },
+  "recording": {
+    "fps": 60,
+    "width": 1920,
+    "height": 1080,
+    "fullscreen": false,
+    "leadInSeconds": 2.0,
+    "resumeLeadSeconds": 1.5,
+    "gapHoldSeconds": 4.0,
+    "postRollSeconds": 2.5,
+    "maxClipSeconds": 90.0,
+    "spectatorMode": "first_person",
+    "spectateCommands": [
+      "spec_autodirector 0",
+      "spec_mode 1",
+      "spec_player {slot}",
+      "spec_lock_to_accountid {account_id}"
+    ],
+    "seekLeadTicks": 128,
+    "playbackSpeed": 1.0,
+    "skipDeadTime": true,
+    "captureMode": "crosshair",
+    "showKillfeed": false,
+    "closeGameWhenDone": true,
+    "openOutputFolder": true
+  },
+  "encoding": {
+    "videoCodec": "auto",
+    "preferredCodecs": [
+      "h264_nvenc",
+      "h264_amf",
+      "h264_qsv",
+      "libx264"
+    ],
+    "quality": 20,
+    "preset": "faster",
+    "pixelFormat": "yuv420p",
+    "audioCodec": "aac",
+    "audioBitrate": "192k",
+    "container": "mp4",
+    "extraOutputArguments": []
+  },
+  "crosshair": {
+    "enabled": false,
+    "length": 10,
+    "gap": 4,
+    "thickness": 2,
+    "color": "0x00FF00",
+    "opacity": 0.9,
+    "outline": 1,
+    "outlineColor": "black",
+    "dot": false
+  },
+  "detection": {
+    "minimumScore": 10.0,
+    "minimumKills": 2,
+    "maximumHighlights": 40,
+    "enabledRules": [
+      "multi_kill",
+      "weapon_feat",
+      "clutch",
+      "trick_shot"
+    ],
+    "tagWeights": {
+      "kills_2": 4.0,
+      "kills_3": 12.0,
+      "kills_4": 22.0,
+      "kills_5": 40.0,
+      "awp_double": 8.0,
+      "awp_multi": 16.0,
+      "sniper_noscope_multi": 10.0,
+      "knife_kill": 14.0,
+      "zeus_kill": 12.0,
+      "deagle_headshot": 6.0,
+      "pistol_multi": 9.0,
+      "grenade_kill": 5.0,
+      "clutch_1v2": 10.0,
+      "clutch_1v3": 20.0,
+      "clutch_1v4": 30.0,
+      "clutch_1v5": 45.0,
+      "noscope": 9.0,
+      "wallbang": 7.0,
+      "through_smoke": 5.0,
+      "blind_kill": 6.0,
+      "airborne_kill": 8.0,
+      "headshot_only": 5.0,
+      "pistol_round": 3.0
+    }
+  },
+  "game": {
+    "tickRate": 64,
+    "launchArguments": [
+      "-steam",
+      "-insecure",
+      "-afxDisableSteamStorage",
+      "-novid",
+      "-console"
+    ],
+    "hookDllRelativePath": "x64/AfxHookSource2.dll",
+    "steamEnvironment": {
+      "SteamAppId": "730",
+      "SteamGameId": "730",
+      "SteamOverlayGameId": "730",
+      "SteamClientLaunch": "1"
+    },
+    "consoleVariables": {
+      "fps_max": "0",
+      "engine_no_focus_sleep": "0",
+      "snd_mute_losefocus": "0",
+      "cl_demo_predict": "0",
+      "demo_ui_mode": "0",
+      "spec_show_xray": "0",
+      "spec_autodirector": "0",
+      "cl_trueview_show_status": "0",
+      "cl_hud_telemetry_frametime_show": "0",
+      "cl_hud_telemetry_net_misdelivery_show": "0",
+      "cl_hud_telemetry_ping_show": "0",
+      "cl_hud_telemetry_serverrecvmargin_graph_show": "0",
+      "r_show_build_info": "0",
+      "sv_cheats": "1",
+      "cl_showfps": "0",
+      "volume": "0.35"
+    },
+    "gameStartupTimeoutSeconds": 300,
+    "recordingTimeoutMinutes": 120,
+    "applyHighGraphics": true,
+    "restoreGraphicsOnExit": true,
+    "hlaeArgumentTemplate": [
+      "-noGui",
+      "-autoStart",
+      "-customLoader",
+      "-programPath",
+      "{game_executable}",
+      "-cmdLine",
+      "{game_arguments}",
+      "-hookDllPath",
+      "{hook_dll}"
+    ]
+  },
+  "toolchain": {
+    "autoDownload": true,
+    "hlaeDownloadUrl": "",
+    "hlaeReleaseApiUrl": "https://api.github.com/repos/advancedfx/advancedfx/releases/latest",
+    "hlaeAssetPattern": "hlae_*.zip",
+    "ffmpegDownloadUrl": "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip",
+    "downloadTimeoutSeconds": 600
+  }
+}

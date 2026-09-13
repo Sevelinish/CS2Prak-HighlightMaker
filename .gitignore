@@ -1,0 +1,76 @@
+# Корневые пути начинаются со слэша намеренно: на Windows git сравнивает
+# пути без учёта регистра, и незаякоренный Highlighter/ поглотил бы
+# src/highlighter/ вместе со всем исходным кодом.
+
+# Локальная конфигурация: может содержать ваши пути к CS2, HLAE и ffmpeg.
+# Шаблон лежит в репозитории как config.example.json
+/config.json
+
+# Окружение и кэши Python
+/.venv/
+/venv/
+/env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Артефакты сборки
+/build/
+/dist/
+*.spec
+
+# Скачиваемый тулчейн: HLAE и ffmpeg, сотни мегабайт и чужие лицензии
+/tools/
+
+# Рабочие файлы: планы, сырые тейки, копии сгенерированных cfg.
+# Содержат пути к демкам, ники и SteamID игроков
+/work/
+/takes/
+
+# Логи: содержат полные пути, Steam userdata ID и командные строки запуска
+/logs/
+*.log
+
+# Готовые клипы и любое записанное видео или звук
+/Highlighter/
+*.mp4
+*.mkv
+*.mov
+*.avi
+*.wav
+*.flac
+
+# Демки: крупные и содержат данные матчей и игроков
+*.dem
+*.dem.gz
+*.dem.zst
+*.dem.bz2
+
+# Резервные копии настроек графики CS2
+*.highlighter-backup
+*.bak
+
+# Секреты
+.env
+*.env
+secrets.json
+credentials.json
+*.pem
+*.key
+
+# Редакторы и ОС
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Служебные каталоги инструментов
+/.claude/
