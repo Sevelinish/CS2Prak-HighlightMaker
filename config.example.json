@@ -33,7 +33,8 @@
     "captureMode": "crosshair",
     "showKillfeed": false,
     "closeGameWhenDone": true,
-    "openOutputFolder": true
+    "openOutputFolder": true,
+    "singleFile": false
   },
   "encoding": {
     "videoCodec": "auto",

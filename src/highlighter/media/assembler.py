@@ -1,21 +1,17 @@
 from __future__ import annotations
 
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
 from ..config.schema import EncodingConfig
-from ..infrastructure.errors import EncodingError
 from ..infrastructure.logging import get_logger
 from ..plan.models import ClipSegment, ClipSpec, RecordingPlan
+from .concat import ConcatMuxer
 from .encoders import EncoderProfile
 from .output_library import OutputLibrary
 
 VIDEO_SUFFIXES = (".mp4", ".mkv", ".mov", ".avi")
 AUDIO_SUFFIXES = (".wav", ".flac")
-FFMPEG_BASE_ARGUMENTS = ("-hide_banner", "-loglevel", "error", "-y")
-CONCAT_LIST_NAME = "segments.txt"
-NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +45,7 @@ class ClipAssembler:
         self._take_directory = take_directory
         self._library = library
         self._video_filter = video_filter
+        self._muxer = ConcatMuxer(ffmpeg_executable)
         self._logger = get_logger("media")
 
     def assemble(self, plan: RecordingPlan) -> list[AssembledClip]:
@@ -110,7 +107,7 @@ class ClipAssembler:
 
     def _concatenate(self, clip: ClipSpec, parts: list[Path]) -> Path:
         target = self._take_directory / clip.name / f"joined{parts[0].suffix}"
-        self._run_concat(parts, target)
+        self._muxer.join(parts, target)
         return target
 
     def _concatenate_audio(
@@ -120,40 +117,11 @@ class ClipAssembler:
         if len(tracks) != len(recorded):
             return None
         target = self._take_directory / clip.name / f"joined{tracks[0].suffix}"
-        self._run_concat(tracks, target)
+        self._muxer.join(tracks, target)
         return target
 
-    def _run_concat(self, parts: list[Path], target: Path) -> None:
-        listing = target.with_name(f"{target.stem}_{CONCAT_LIST_NAME}")
-        listing.write_text(
-            "\n".join(f"file '{part.as_posix()}'" for part in parts) + "\n",
-            encoding="utf-8",
-        )
-
-        self._execute(
-            [
-                str(self._ffmpeg_executable),
-                *FFMPEG_BASE_ARGUMENTS,
-                "-f",
-                "concat",
-                "-safe",
-                "0",
-                "-i",
-                str(listing),
-                "-c",
-                "copy",
-                str(target),
-            ],
-            target.name,
-        )
-
     def _mux(self, recorded: RecordedSegment, destination: Path) -> bool:
-        arguments = [
-            str(self._ffmpeg_executable),
-            *FFMPEG_BASE_ARGUMENTS,
-            "-i",
-            str(recorded.video),
-        ]
+        arguments = ["-i", str(recorded.video)]
         if recorded.audio is not None:
             arguments.extend(["-i", str(recorded.audio)])
 
@@ -170,26 +138,13 @@ class ClipAssembler:
             )
         arguments.extend(["-movflags", "+faststart", str(destination)])
 
-        self._execute(arguments, destination.name)
+        self._muxer.run(arguments, destination.name)
         return recorded.audio is not None
 
     def _video_arguments(self) -> list[str]:
         if not self._video_filter:
             return ["-c:v", "copy"]
         return ["-vf", self._video_filter, *self._encoder.output_arguments()]
-
-    def _execute(self, arguments: list[str], label: str) -> None:
-        completed = subprocess.run(
-            arguments,
-            capture_output=True,
-            text=True,
-            errors="replace",
-            creationflags=NO_WINDOW,
-        )
-        if completed.returncode != 0:
-            raise EncodingError(
-                f"ffmpeg failed for {label}: {completed.stderr.strip()[:400]}"
-            )
 
     @staticmethod
     def _largest_file(root: Path, suffixes: tuple[str, ...]) -> Path | None:

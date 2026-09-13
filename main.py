@@ -14,6 +14,7 @@ def main() -> int:
     return Application(
         demo_argument=arguments.demo,
         player_query=arguments.player,
+        one_file=arguments.one_file,
         verbose=arguments.verbose,
     ).run()
 

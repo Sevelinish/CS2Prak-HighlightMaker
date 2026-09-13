@@ -61,6 +61,7 @@ The result lands in `dist/HighlighterCS2/`. Rebuilding leaves the downloaded too
 | `HighlighterCS2.exe match.dem -p s1mple` | Only that player's moments |
 | `HighlighterCS2.exe match.dem -p -n1clxe` | Names starting with a dash work as they are |
 | `HighlighterCS2.exe match.dem -p 76561198000000000` | The same by SteamID64 |
+| `HighlighterCS2.exe match.dem -one-file` | Join the picked moments into a single video |
 | `HighlighterCS2.exe match.dem -v` | Verbose console output |
 
 **About the demo name.** A full path is optional. The file next to the exe is checked first, then the search runs through the `demos` folder and the CS2 demo folders, nested ones included. The extension can be left out: `dust1309` is found just like `dust1309.dem`. If the file is missing, the program prints exactly where it looked.
@@ -68,6 +69,19 @@ The result lands in `dist/HighlighterCS2/`. Rebuilding leaves the downloaded too
 **About `--player`.** Also spelled `-p` or `--player-name`. It takes an exact name, part of a name, or a SteamID64, and case does not matter. Names that start with a dash are handled properly: plain argument parsing would read `-n1clxe` as a flag, so the arguments are normalised beforehand. Real flags are still not swallowed, `-p -v` remains an error.
 
 If part of a name matches several players, the program lists which ones. If it matches nobody, it prints the whole roster of the demo.
+
+**About `-one-file`.** Also spelled `--one-file`. Normally every picked moment becomes its own `.mp4`. With this flag they are joined, in the order they happen in the demo, into `<demo>_highlights.mp4`, and the individual clips move into a `parts` subfolder so the result stays obvious:
+
+```
+Highlighter/match/
+├── match_highlights.mp4     the joined result
+└── parts/
+    ├── 01_round08_n1clxe_awp_double.mp4
+    ├── 02_round09_n1clxe_awp_double.mp4
+    └── 03_round10_n1clxe_awp_double.mp4
+```
+
+Nothing is deleted, so the separate clips stay available for editing. Joining runs through the ffmpeg concat demuxer with no re-encoding, so it costs seconds and loses no quality. The same behaviour can be made permanent with `recording.singleFile` in the config; the flag simply forces it on for one run.
 
 ## What a run looks like
 
@@ -146,7 +160,7 @@ A cut is only made when the seek is guaranteed to move forward. The threshold is
 
 On the test demo, segmentation removed 58% of the dead time: a 1v2 clutch that ran 72 seconds became 15.5 seconds across three segments.
 
-Segments are recorded as separate files and joined by ffmpeg through the concat demuxer, with no re-encoding.
+Segments are recorded as separate files and joined by ffmpeg through the concat demuxer, with no re-encoding. The same mechanism joins whole clips when `-one-file` is used.
 
 ## Configuration
 
@@ -199,6 +213,7 @@ The `logs/highlighter.log` file always receives everything down to `DEBUG`, what
 | `skipDeadTime` | `true` | Seek past the empty stretches |
 | `closeGameWhenDone` | `true` | Close CS2 after the last clip |
 | `openOutputFolder` | `true` | Open the clip folder when finished |
+| `singleFile` | `false` | Join every clip into one video, same as `-one-file` |
 
 ### `encoding`
 
@@ -431,7 +446,7 @@ src/highlighter/
 │   ├── mirv_script.py   cfg generation
 │   └── script_writer.py graphics.py  launcher.py  game_process.py  session.py
 ├── media/               assembling the final mp4
-│   └── assembler.py  encoders.py  crosshair.py  output_library.py  folder_opener.py
+│   └── assembler.py  concat.py  reel.py  encoders.py  crosshair.py  output_library.py
 ├── provisioning/        downloading HLAE and ffmpeg
 │   └── toolchain.py  downloader.py  archive.py  release_resolver.py  hlae_installation.py
 ├── game/                locating Steam and CS2

@@ -20,6 +20,7 @@ from .infrastructure.logging import LoggingConfigurator
 from .infrastructure.paths import ApplicationPaths
 from .media.assembler import AssembledClip
 from .media.folder_opener import FolderOpener
+from .media.reel import Reel
 from .plan.builder import RecordingPlanBuilder
 from .plan.models import RecordingPlan
 from .plan.writer import RecordingPlanWriter
@@ -43,12 +44,14 @@ class Application:
         self,
         demo_argument: str | None = None,
         player_query: str | None = None,
+        one_file: bool = False,
         verbose: bool = False,
     ) -> None:
         self._paths = ApplicationPaths.discover()
         self._console: Console = build_console()
         self._demo_argument = demo_argument
         self._player_query = player_query
+        self._one_file = one_file
         self._verbose = verbose
         self._logger = LoggingConfigurator(self._paths.logs, verbose).configure()
 
@@ -68,6 +71,8 @@ class Application:
         repository = ConfigRepository(self._paths.config_file)
         config = repository.load()
         self._apply_debug_setting(config)
+        if self._one_file:
+            config.recording.single_file = True
         if repository.migrated:
             self._console.print(
                 f"[muted]config.json upgraded to version {CONFIG_VERSION}[/muted]"
@@ -97,9 +102,9 @@ class Application:
             return EXIT_SUCCESS
 
         plan = self._build_plan(match, selected, config, reporter)
-        assembled = self._record(plan, config, installation, reporter)
+        assembled, reel = self._record(plan, config, installation, reporter)
         self._open_folder(plan, assembled, config, reporter)
-        self._report(assembled, plan)
+        self._report(assembled, plan, reel)
         return EXIT_SUCCESS
 
     def _apply_debug_setting(self, config: ApplicationConfig) -> None:
@@ -221,7 +226,7 @@ class Application:
         config: ApplicationConfig,
         installation: Cs2Installation,
         reporter: StepReporter,
-    ) -> list[AssembledClip]:
+    ) -> tuple[list[AssembledClip], Reel | None]:
         tools_directory = self._paths.resolve(config.paths.tools_directory)
         toolchain = ToolchainProvisioner(
             self._console,
@@ -239,7 +244,8 @@ class Application:
             work_directory=self._paths.resolve(config.paths.work_directory),
             output_root=self._paths.resolve(config.paths.output_directory),
         )
-        return session.execute(plan, reporter)
+        assembled = session.execute(plan, reporter)
+        return assembled, session.reel
 
     def _open_folder(
         self,
@@ -257,7 +263,12 @@ class Application:
         opened = FolderOpener(config.recording.open_output_folder).open(folder)
         reporter.done(str(folder) if opened else f"not opened: {folder}")
 
-    def _report(self, assembled: list[AssembledClip], plan: RecordingPlan) -> None:
+    def _report(
+        self,
+        assembled: list[AssembledClip],
+        plan: RecordingPlan,
+        reel: Reel | None = None,
+    ) -> None:
         if not assembled:
             self._console.print(
                 "\n[danger]No clips were produced. "
@@ -274,6 +285,12 @@ class Application:
             )
             audio = "" if clip.has_audio else " [muted](no audio)[/muted]"
             self._console.print(f"  [success]OK[/success] {clip.output.name}{segments}{audio}")
+
+        if reel is not None:
+            self._console.print(
+                f"\n[success]Joined into[/success] {reel.output.name} "
+                f"[muted]({reel.clip_count} clips, {reel.duration_seconds:.0f}s)[/muted]"
+            )
 
         self._console.print(
             f"\n[success]{len(assembled)}/{plan.clip_count} clips saved to[/success] "

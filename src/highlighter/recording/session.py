@@ -12,6 +12,7 @@ from ..media.assembler import AssembledClip, ClipAssembler
 from ..media.crosshair import CrosshairFilterBuilder
 from ..media.encoders import EncoderProfile, EncoderSelector
 from ..media.output_library import OutputLibrary
+from ..media.reel import Reel, ReelBuilder
 from ..plan.models import RecordingPlan
 from ..presentation.steps import StepReporter
 from ..provisioning.hlae_installation import HlaeInstallation
@@ -42,7 +43,12 @@ class RecordingSession:
         self._toolchain = toolchain
         self._work_directory = work_directory
         self._output_root = output_root
+        self._reel: Reel | None = None
         self._logger = get_logger("recording")
+
+    @property
+    def reel(self) -> Reel | None:
+        return self._reel
 
     def execute(self, plan: RecordingPlan, reporter: StepReporter) -> list[AssembledClip]:
         take_directory = self._prepare_take_directory(plan)
@@ -130,14 +136,36 @@ class RecordingSession:
         if self._config.crosshair.enabled:
             reporter.detail("drawing the crosshair overlay")
 
+        library = self._build_library(plan)
         try:
-            assembled = self._assemble(plan, take_directory, encoder)
+            assembled = self._assemble(plan, take_directory, encoder, library)
+            self._reel = self._join(assembled, library, reporter)
         except BaseException:
             reporter.fail()
             raise
 
         reporter.done(f"{len(assembled)} of {plan.clip_count} clips written")
         return assembled
+
+    def _join(
+        self, assembled: list[AssembledClip], library: OutputLibrary, reporter: StepReporter
+    ) -> Reel | None:
+        if not self._config.recording.single_file or not assembled:
+            return None
+
+        reporter.detail(f"joining {len(assembled)} clip(s) into one file")
+        reel = ReelBuilder(self._toolchain.ffmpeg, library).build(assembled)
+        if reel is not None:
+            reporter.detail(reel.output.name)
+        return reel
+
+    def _build_library(self, plan: RecordingPlan) -> OutputLibrary:
+        return OutputLibrary(
+            self._output_root,
+            plan.demo_name,
+            self._config.encoding.container,
+            single_file=self._config.recording.single_file,
+        )
 
     def _report_progress(
         self,
@@ -170,11 +198,12 @@ class RecordingSession:
         return sum(len(clip.segments) for clip in plan.clips)
 
     def _assemble(
-        self, plan: RecordingPlan, take_directory: Path, encoder: EncoderProfile
+        self,
+        plan: RecordingPlan,
+        take_directory: Path,
+        encoder: EncoderProfile,
+        library: OutputLibrary,
     ) -> list[AssembledClip]:
-        library = OutputLibrary(
-            self._output_root, plan.demo_name, self._config.encoding.container
-        )
         assembler = ClipAssembler(
             ffmpeg_executable=self._toolchain.ffmpeg,
             encoding=self._config.encoding,

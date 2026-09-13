@@ -106,6 +106,7 @@ class RecordingConfig:
     show_killfeed: bool = False
     close_game_when_done: bool = True
     open_output_folder: bool = True
+    single_file: bool = False
 
     @classmethod
     def from_mapping(cls, source: Mapping[str, Any]) -> "RecordingConfig":
@@ -137,6 +138,7 @@ class RecordingConfig:
             open_output_folder=bool(
                 _read(source, "openOutputFolder", default.open_output_folder)
             ),
+            single_file=bool(_read(source, "singleFile", default.single_file)),
         )
 
     def to_mapping(self) -> dict[str, Any]:
@@ -159,6 +161,7 @@ class RecordingConfig:
             "showKillfeed": self.show_killfeed,
             "closeGameWhenDone": self.close_game_when_done,
             "openOutputFolder": self.open_output_folder,
+            "singleFile": self.single_file,
         }
 
 
