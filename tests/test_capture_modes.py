@@ -41,12 +41,20 @@ def test_crosshair_mode_never_blanks_the_hud(match):
     assert "crosshair 0" not in content
 
 
-def test_killfeed_is_off_by_default(match):
-    assert "cl_drawhud_force_deathnotices -1" in session(match)
+def test_killfeed_is_shown_by_default(match):
+    assert RecordingConfig().show_killfeed is True
+    assert "cl_drawhud_force_deathnotices 1" in session(match)
 
 
-def test_killfeed_can_be_kept(match):
-    assert "cl_drawhud_force_deathnotices 1" in session(match, show_killfeed=True)
+def test_killfeed_can_be_turned_off(match):
+    assert "cl_drawhud_force_deathnotices -1" in session(match, show_killfeed=False)
+
+
+def test_killfeed_rides_along_with_the_crosshair(match):
+    content = session(match)
+
+    assert "cl_draw_only_deathnotices 1" in content
+    assert "cl_drawhud_force_deathnotices 1" in content
 
 
 def test_clean_mode_still_removes_everything(match):
@@ -73,3 +81,22 @@ def test_every_mode_configures_exactly_one_capture_path(match, mode: str):
     uses_stream = "capture beforeUi" in content
 
     assert uses_screen != uses_stream
+
+
+def test_an_old_config_gains_the_killfeed(tmp_path):
+    import json
+
+    from highlighter.config.migrations import CURRENT_VERSION
+    from highlighter.config.repository import ConfigRepository
+
+    config_file = tmp_path / "config.json"
+    config_file.write_text(
+        json.dumps({"version": 7, "recording": {"fps": 120, "showKillfeed": False}}),
+        encoding="utf-8",
+    )
+
+    config = ConfigRepository(config_file).load()
+
+    assert config.recording.show_killfeed is True
+    assert config.recording.fps == 120
+    assert json.loads(config_file.read_text(encoding="utf-8"))["version"] == CURRENT_VERSION

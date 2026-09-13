@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
-CONFIG_VERSION = 7
+CONFIG_VERSION = 8
 
 DEFAULT_TAG_WEIGHTS: dict[str, float] = {
     "kills_2": 4.0,

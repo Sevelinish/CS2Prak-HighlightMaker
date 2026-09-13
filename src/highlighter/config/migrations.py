@@ -191,6 +191,14 @@ class GameCrosshairMigration(ConfigMigration):
         raw.setdefault("crosshair", {})["enabled"] = False
 
 
+class KillfeedMigration(ConfigMigration):
+    version = 8
+    reason = "the kill feed is now shown next to the crosshair"
+
+    def apply(self, raw: dict[str, Any]) -> None:
+        raw.setdefault("recording", {})["showKillfeed"] = True
+
+
 MIGRATIONS: tuple[ConfigMigration, ...] = (
     Cs2CustomLoaderMigration(),
     Cs2ClipQualityMigration(),
@@ -198,6 +206,7 @@ MIGRATIONS: tuple[ConfigMigration, ...] = (
     SpectateSequenceMigration(),
     SpectateBySlotMigration(),
     GameCrosshairMigration(),
+    KillfeedMigration(),
 )
 CURRENT_VERSION = max((migration.version for migration in MIGRATIONS), default=INITIAL_VERSION)
 
