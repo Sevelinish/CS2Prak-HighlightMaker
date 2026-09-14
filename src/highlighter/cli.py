@@ -11,6 +11,8 @@ EPILOG = """examples:
   HighlighterCS2 match.dem -p -n1clxe     names starting with a dash are fine
   HighlighterCS2 match.dem -p 76561198000000000
   HighlighterCS2 match.dem -one-file      join the picked moments into one video
+  HighlighterCS2 match.dem -m nades_smoke every smoke that was thrown
+  HighlighterCS2 match.dem -m nades       every grenade of every kind
 
 The demo can be a full path or just a file name; plain names are looked up in
 the demo folder and in the CS2 demo folders.
@@ -19,8 +21,9 @@ the demo folder and in the CS2 demo folders.
 PLAYER_FLAGS = ("-p", "--player", "--player-name")
 CANONICAL_PLAYER_FLAG = "--player"
 ONE_FILE_FLAGS = ("-one-file", "--one-file")
+MODE_FLAGS = ("-m", "--mode")
 KNOWN_FLAGS = frozenset(
-    {"-h", "--help", "-v", "--verbose", *PLAYER_FLAGS, *ONE_FILE_FLAGS}
+    {"-h", "--help", "-v", "--verbose", *PLAYER_FLAGS, *ONE_FILE_FLAGS, *MODE_FLAGS}
 )
 
 
@@ -69,6 +72,14 @@ class CommandLine:
             default=None,
             metavar="NAME",
             help="only this player's highlights (name, partial name or SteamID64)",
+        )
+        parser.add_argument(
+            *MODE_FLAGS,
+            dest="mode",
+            default=None,
+            metavar="MODE",
+            help="what to look for: highlights (default), nades, nades_smoke, nades_flash, "
+            "nades_he, nades_molotov, nades_decoy",
         )
         parser.add_argument(
             *ONE_FILE_FLAGS,

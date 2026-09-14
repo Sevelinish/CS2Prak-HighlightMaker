@@ -199,6 +199,25 @@ class KillfeedMigration(ConfigMigration):
         raw.setdefault("recording", {})["showKillfeed"] = True
 
 
+class NadeTimingMigration(ConfigMigration):
+    version = 9
+    reason = (
+        "the zoom hold is counted in real demo ticks and lasts a full second, and a "
+        "long grenade flight is trimmed instead of being filmed end to end"
+    )
+    TIMINGS = {
+        "freezeLeadSeconds": 1.0,
+        "freezeSeconds": 1.0,
+        "landingCutSeconds": 0.5,
+        "landingLeadSeconds": 3.0,
+    }
+
+    def apply(self, raw: dict[str, Any]) -> None:
+        nades = raw.setdefault("nades", {})
+        nades.pop("freezeTimescale", None)
+        nades.update(self.TIMINGS)
+
+
 MIGRATIONS: tuple[ConfigMigration, ...] = (
     Cs2CustomLoaderMigration(),
     Cs2ClipQualityMigration(),
@@ -207,6 +226,7 @@ MIGRATIONS: tuple[ConfigMigration, ...] = (
     SpectateBySlotMigration(),
     GameCrosshairMigration(),
     KillfeedMigration(),
+    NadeTimingMigration(),
 )
 CURRENT_VERSION = max((migration.version for migration in MIGRATIONS), default=INITIAL_VERSION)
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
-CONFIG_VERSION = 8
+CONFIG_VERSION = 9
 
 DEFAULT_TAG_WEIGHTS: dict[str, float] = {
     "kills_2": 4.0,
@@ -209,6 +209,62 @@ class EncodingConfig:
             "audioBitrate": self.audio_bitrate,
             "container": self.container,
             "extraOutputArguments": list(self.extra_output_arguments),
+        }
+
+
+@dataclass(slots=True)
+class NadeConfig:
+    lead_in_seconds: float = 3.0
+    freeze_lead_seconds: float = 1.0
+    freeze_seconds: float = 1.0
+    zoom_fov: float = 22.5
+    landing_cut_seconds: float = 0.5
+    landing_lead_seconds: float = 3.0
+    landing_hold_seconds: float = 3.0
+    landing_distance: float = 220.0
+    landing_height: float = 90.0
+    callout_sample_stride: int = 64
+
+    @classmethod
+    def from_mapping(cls, source: Mapping[str, Any]) -> "NadeConfig":
+        default = cls()
+        return cls(
+            lead_in_seconds=float(_read(source, "leadInSeconds", default.lead_in_seconds)),
+            freeze_lead_seconds=float(
+                _read(source, "freezeLeadSeconds", default.freeze_lead_seconds)
+            ),
+            freeze_seconds=float(_read(source, "freezeSeconds", default.freeze_seconds)),
+            zoom_fov=float(_read(source, "zoomFov", default.zoom_fov)),
+            landing_cut_seconds=float(
+                _read(source, "landingCutSeconds", default.landing_cut_seconds)
+            ),
+            landing_lead_seconds=float(
+                _read(source, "landingLeadSeconds", default.landing_lead_seconds)
+            ),
+            landing_hold_seconds=float(
+                _read(source, "landingHoldSeconds", default.landing_hold_seconds)
+            ),
+            landing_distance=float(
+                _read(source, "landingDistance", default.landing_distance)
+            ),
+            landing_height=float(_read(source, "landingHeight", default.landing_height)),
+            callout_sample_stride=int(
+                _read(source, "calloutSampleStride", default.callout_sample_stride)
+            ),
+        )
+
+    def to_mapping(self) -> dict[str, Any]:
+        return {
+            "leadInSeconds": self.lead_in_seconds,
+            "freezeLeadSeconds": self.freeze_lead_seconds,
+            "freezeSeconds": self.freeze_seconds,
+            "zoomFov": self.zoom_fov,
+            "landingCutSeconds": self.landing_cut_seconds,
+            "landingLeadSeconds": self.landing_lead_seconds,
+            "landingHoldSeconds": self.landing_hold_seconds,
+            "landingDistance": self.landing_distance,
+            "landingHeight": self.landing_height,
+            "calloutSampleStride": self.callout_sample_stride,
         }
 
 
@@ -455,6 +511,7 @@ class ApplicationConfig:
     recording: RecordingConfig = field(default_factory=RecordingConfig)
     encoding: EncodingConfig = field(default_factory=EncodingConfig)
     crosshair: CrosshairConfig = field(default_factory=CrosshairConfig)
+    nades: NadeConfig = field(default_factory=NadeConfig)
     detection: DetectionConfig = field(default_factory=DetectionConfig)
     game: GameConfig = field(default_factory=GameConfig)
     toolchain: ToolchainConfig = field(default_factory=ToolchainConfig)
@@ -467,6 +524,7 @@ class ApplicationConfig:
             recording=RecordingConfig.from_mapping(source.get("recording") or {}),
             encoding=EncodingConfig.from_mapping(source.get("encoding") or {}),
             crosshair=CrosshairConfig.from_mapping(source.get("crosshair") or {}),
+            nades=NadeConfig.from_mapping(source.get("nades") or {}),
             detection=DetectionConfig.from_mapping(source.get("detection") or {}),
             game=GameConfig.from_mapping(source.get("game") or {}),
             toolchain=ToolchainConfig.from_mapping(source.get("toolchain") or {}),
@@ -480,6 +538,7 @@ class ApplicationConfig:
             "recording": self.recording.to_mapping(),
             "encoding": self.encoding.to_mapping(),
             "crosshair": self.crosshair.to_mapping(),
+            "nades": self.nades.to_mapping(),
             "detection": self.detection.to_mapping(),
             "game": self.game.to_mapping(),
             "toolchain": self.toolchain.to_mapping(),

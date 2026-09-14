@@ -8,9 +8,11 @@ from rich.panel import Panel
 from .config.repository import ConfigRepository
 from .config.schema import CONFIG_VERSION, ApplicationConfig
 from .demo.locator import DemoLocator
+from .demo.grenade_reader import GrenadeReader
 from .demo.reader import DemoReader
 from .detection.engine import HighlightEngine
 from .detection.player_filter import PlayerResolver
+from .domain.grenade import Grenade
 from .domain.highlight import Highlight
 from .domain.match import Match
 from .domain.player import Player
@@ -21,10 +23,13 @@ from .infrastructure.paths import ApplicationPaths
 from .media.assembler import AssembledClip
 from .media.folder_opener import FolderOpener
 from .media.reel import Reel
+from .modes import RunMode
 from .plan.builder import RecordingPlanBuilder
+from .plan.nade_builder import NadePlanBuilder
 from .plan.models import RecordingPlan
 from .plan.writer import RecordingPlanWriter
 from .presentation.demo_picker import DemoPicker
+from .presentation.grenade_table import GrenadeTable
 from .presentation.highlight_table import HighlightTable
 from .presentation.selector import HighlightSelector
 from .presentation.steps import StepReporter
@@ -44,6 +49,7 @@ class Application:
         self,
         demo_argument: str | None = None,
         player_query: str | None = None,
+        mode_token: str | None = None,
         one_file: bool = False,
         verbose: bool = False,
     ) -> None:
@@ -51,6 +57,7 @@ class Application:
         self._console: Console = build_console()
         self._demo_argument = demo_argument
         self._player_query = player_query
+        self._mode = RunMode.parse(mode_token)
         self._one_file = one_file
         self._verbose = verbose
         self._logger = LoggingConfigurator(self._paths.logs, verbose).configure()
@@ -87,21 +94,13 @@ class Application:
 
         match = self._read_demo(demo_path, config, reporter)
         target = self._resolve_player(match, reporter)
-        highlights = self._detect(match, config, target, reporter)
-        if not highlights:
-            self._console.print(
-                "[warning]Nothing passed the score threshold. "
-                "Lower detection.minimumScore in config.json.[/warning]"
-            )
-            return EXIT_SUCCESS
 
-        HighlightTable(self._console, match).render(highlights)
-        selected = HighlightSelector(self._console).select(highlights)
-        if not selected:
-            self._console.print("[warning]Nothing selected[/warning]")
+        if self._mode.records_grenades:
+            plan = self._grenade_plan(match, config, target, reporter)
+        else:
+            plan = self._highlight_plan(match, config, target, reporter)
+        if plan is None:
             return EXIT_SUCCESS
-
-        plan = self._build_plan(match, selected, config, reporter)
         assembled, reel = self._record(plan, config, installation, reporter)
         self._open_folder(plan, assembled, config, reporter)
         self._report(assembled, plan, reel)
@@ -152,6 +151,84 @@ class Application:
         raise HighlighterError(
             f"No demo called '{given}'. Looked next to the exe and in:\n  {searched}"
         )
+
+    def _highlight_plan(
+        self,
+        match: Match,
+        config: ApplicationConfig,
+        target: Player | None,
+        reporter: StepReporter,
+    ) -> RecordingPlan | None:
+        highlights = self._detect(match, config, target, reporter)
+        if not highlights:
+            self._console.print(
+                "[warning]Nothing passed the score threshold. "
+                "Lower detection.minimumScore in config.json.[/warning]"
+            )
+            return None
+
+        HighlightTable(self._console, match).render(highlights)
+        selected = HighlightSelector(self._console).select(highlights)
+        if not selected:
+            self._console.print("[warning]Nothing selected[/warning]")
+            return None
+        return self._build_plan(match, selected, config, reporter)
+
+    def _grenade_plan(
+        self,
+        match: Match,
+        config: ApplicationConfig,
+        target: Player | None,
+        reporter: StepReporter,
+    ) -> RecordingPlan | None:
+        grenades = self._read_grenades(match, config, target, reporter)
+        if not grenades:
+            self._console.print(
+                f"[warning]No {self._mode.label} found in this demo[/warning]"
+            )
+            return None
+
+        GrenadeTable(self._console, match).render(grenades)
+        selected = HighlightSelector(self._console).select(grenades)
+        if not selected:
+            self._console.print("[warning]Nothing selected[/warning]")
+            return None
+
+        reporter.begin("Planning grenade shots")
+        output_root = self._paths.resolve(config.paths.output_directory)
+        plan = NadePlanBuilder(config.recording, config.nades).build(
+            match, selected, output_root
+        )
+        work_directory = self._paths.resolve(config.paths.work_directory)
+        plan_file = RecordingPlanWriter(work_directory / "plans").write(plan)
+        reporter.detail(str(plan_file))
+        reporter.done(f"{plan.clip_count} shots, {plan.total_seconds:.0f}s of footage")
+        return plan
+
+    def _read_grenades(
+        self,
+        match: Match,
+        config: ApplicationConfig,
+        target: Player | None,
+        reporter: StepReporter,
+    ) -> list[Grenade]:
+        reporter.begin(f"Scanning for {self._mode.label} grenades")
+        try:
+            grenades = GrenadeReader(
+                match.demo_path, match, config.nades.callout_sample_stride
+            ).read(self._mode.grenade_kinds)
+        except BaseException:
+            reporter.fail()
+            raise
+
+        if target is not None:
+            grenades = [
+                item for item in grenades if item.thrower.steam_id64 == target.steam_id64
+            ]
+
+        places = len({item.landing_place for item in grenades})
+        reporter.done(f"{len(grenades)} found across {places} spot(s)")
+        return grenades
 
     def _read_demo(
         self, demo_path: Path, config: ApplicationConfig, reporter: StepReporter

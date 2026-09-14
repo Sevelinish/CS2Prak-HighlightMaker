@@ -63,6 +63,18 @@
     "outlineColor": "black",
     "dot": false
   },
+  "nades": {
+    "leadInSeconds": 3.0,
+    "freezeLeadSeconds": 1.0,
+    "freezeSeconds": 1.0,
+    "zoomFov": 22.5,
+    "landingCutSeconds": 0.5,
+    "landingLeadSeconds": 3.0,
+    "landingHoldSeconds": 3.0,
+    "landingDistance": 220.0,
+    "landingHeight": 90.0,
+    "calloutSampleStride": 64
+  },
   "detection": {
     "minimumScore": 10.0,
     "minimumKills": 2,

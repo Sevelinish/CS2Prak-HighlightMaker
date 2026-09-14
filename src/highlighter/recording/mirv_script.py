@@ -5,7 +5,7 @@ from pathlib import Path
 
 from ..config.schema import GameConfig, RecordingConfig
 from ..media.encoders import EncoderProfile
-from ..plan.models import ClipSegment, ClipSpec, RecordingPlan
+from ..plan.models import CameraBeat, ClipSegment, ClipSpec, RecordingPlan
 
 SESSION_SCRIPT_NAME = "highlighter_session"
 SEEK_SCRIPT_NAME = "highlighter_seek"
@@ -42,6 +42,16 @@ class ScriptBundle:
 
 
 @dataclass(frozen=True, slots=True)
+class ScheduledBeat:
+    clip: ClipSpec
+    beat: CameraBeat
+
+    @property
+    def script_name(self) -> str:
+        return f"highlighter_c{self.clip.index:02d}_{self.beat.name}"
+
+
+@dataclass(frozen=True, slots=True)
 class ScheduledSegment:
     clip: ClipSpec
     segment: ClipSegment
@@ -70,7 +80,7 @@ class MirvScriptBuilder:
 
     def build(self, plan: RecordingPlan) -> ScriptBundle:
         schedule = self._flatten(plan)
-        files = [ScriptFile(SESSION_SCRIPT_NAME, self._session_script(schedule))]
+        files = [ScriptFile(SESSION_SCRIPT_NAME, self._session_script(plan, schedule))]
 
         if schedule:
             files.append(ScriptFile(SEEK_SCRIPT_NAME, self._seek_script(schedule[0])))
@@ -80,7 +90,20 @@ class MirvScriptBuilder:
             files.append(ScriptFile(entry.start_script_name, self._start_script(entry)))
             files.append(ScriptFile(entry.end_script_name, self._end_script(entry, following)))
 
+        for beat in self._beats(plan):
+            files.append(
+                ScriptFile(beat.script_name, self._join(list(beat.beat.commands)))
+            )
+
         return ScriptBundle(files=tuple(files), entry_script=SESSION_SCRIPT_NAME)
+
+    @staticmethod
+    def _beats(plan: RecordingPlan) -> list[ScheduledBeat]:
+        return [
+            ScheduledBeat(clip=clip, beat=beat)
+            for clip in plan.clips
+            for beat in clip.beats
+        ]
 
     @staticmethod
     def _flatten(plan: RecordingPlan) -> list[ScheduledSegment]:
@@ -90,7 +113,7 @@ class MirvScriptBuilder:
             for segment in clip.segments
         ]
 
-    def _session_script(self, schedule: list[ScheduledSegment]) -> str:
+    def _session_script(self, plan: RecordingPlan, schedule: list[ScheduledSegment]) -> str:
         lines = [f"{name} {value}" for name, value in self._game.console_variables.items()]
         lines.extend(
             [
@@ -114,6 +137,9 @@ class MirvScriptBuilder:
             lines.append(
                 f"mirv_cmd addAtTick {entry.segment.end_tick} exec {entry.end_script_name}"
             )
+
+        for beat in self._beats(plan):
+            lines.append(f"mirv_cmd addAtTick {beat.beat.tick} exec {beat.script_name}")
 
         return self._join(lines)
 
@@ -148,12 +174,19 @@ class MirvScriptBuilder:
         take_path = self._take_directory / entry.clip.name / entry.segment.name
         return self._join(
             [
-                *self._spectate_commands(entry.clip),
-                f"spec_mode {self._spectator_mode()}",
+                *self._camera_setup(entry),
                 f'mirv_streams record name "{self._as_engine_path(take_path)}"',
                 "mirv_streams record start",
             ]
         )
+
+    def _camera_setup(self, entry: ScheduledSegment) -> list[str]:
+        if entry.segment.setup_commands:
+            return list(entry.segment.setup_commands)
+        return [
+            *self._spectate_commands(entry.clip),
+            f"spec_mode {self._spectator_mode()}",
+        ]
 
     def _end_script(self, entry: ScheduledSegment, following: ScheduledSegment | None) -> str:
         lines = ["mirv_streams record end"]

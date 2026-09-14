@@ -7,6 +7,7 @@ from rich.logging import RichHandler
 
 LOGGER_NAME = "highlighter"
 QUIET_CONSOLE_LEVEL = logging.WARNING
+THIRD_PARTY_LOGGERS = ("demoparser2", "polars", "pyarrow", "numexpr", "matplotlib", "PIL")
 
 
 class LoggingConfigurator:
@@ -43,7 +44,16 @@ class LoggingConfigurator:
 
         logger.addHandler(console_handler)
         logger.addHandler(file_handler)
+        self._quiet_third_parties()
         return logger
+
+    def _quiet_third_parties(self) -> None:
+        root = logging.getLogger()
+        root.setLevel(logging.DEBUG if self._verbose else QUIET_CONSOLE_LEVEL)
+        for name in THIRD_PARTY_LOGGERS:
+            logging.getLogger(name).setLevel(
+                logging.DEBUG if self._verbose else QUIET_CONSOLE_LEVEL
+            )
 
 
 def get_logger(suffix: str | None = None) -> logging.Logger:

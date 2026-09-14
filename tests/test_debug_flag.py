@@ -141,3 +141,22 @@ def test_repository_reports_no_migration_for_a_current_config(tmp_path: Path):
     fresh.load()
 
     assert fresh.migrated is False
+
+
+def test_the_root_logger_is_quiet_when_debug_is_off(tmp_path: Path):
+    LoggingConfigurator(tmp_path, verbose=False).configure()
+
+    assert logging.getLogger().level == logging.WARNING
+
+
+def test_third_party_loggers_are_quiet_when_debug_is_off(tmp_path: Path):
+    LoggingConfigurator(tmp_path, verbose=False).configure()
+
+    for name in ("demoparser2", "polars", "pyarrow"):
+        assert logging.getLogger(name).level == logging.WARNING
+
+
+def test_verbose_opens_the_root_logger_back_up(tmp_path: Path):
+    LoggingConfigurator(tmp_path, verbose=True).configure()
+
+    assert logging.getLogger().level == logging.DEBUG

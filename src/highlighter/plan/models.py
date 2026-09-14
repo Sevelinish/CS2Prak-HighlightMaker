@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-PLAN_VERSION = 2
+PLAN_VERSION = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,12 +24,23 @@ class ClipPlayer:
 
 
 @dataclass(frozen=True, slots=True)
+class CameraBeat:
+    tick: int
+    name: str
+    commands: tuple[str, ...]
+
+    def to_mapping(self) -> dict[str, Any]:
+        return {"tick": self.tick, "name": self.name, "commands": list(self.commands)}
+
+
+@dataclass(frozen=True, slots=True)
 class ClipSegment:
     index: int
     start_tick: int
     end_tick: int
     kill_ticks: tuple[int, ...]
     duration_seconds: float
+    setup_commands: tuple[str, ...] = ()
 
     @property
     def name(self) -> str:
@@ -42,6 +53,7 @@ class ClipSegment:
             "endTick": self.end_tick,
             "killTicks": list(self.kill_ticks),
             "durationSeconds": round(self.duration_seconds, 2),
+            "setupCommands": list(self.setup_commands),
         }
 
 
@@ -56,6 +68,8 @@ class ClipSpec:
     segments: tuple[ClipSegment, ...]
     action_start_tick: int
     action_end_tick: int
+    beats: tuple[CameraBeat, ...] = ()
+    note: str = ""
 
     @property
     def start_tick(self) -> int:
@@ -90,6 +104,8 @@ class ClipSpec:
             "actionEndTick": self.action_end_tick,
             "durationSeconds": round(self.duration_seconds, 2),
             "segments": [segment.to_mapping() for segment in self.segments],
+            "beats": [beat.to_mapping() for beat in self.beats],
+            "note": self.note,
         }
 
 

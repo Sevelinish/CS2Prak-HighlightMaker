@@ -21,6 +21,7 @@ demo.dem  ->  parse  ->  detect  ->  table in the console  ->  pick moments
 * Clean picture: the real in-game crosshair with nothing else on screen
 * Automatic hardware encoder selection (NVENC, AMF, QuickSync) with a real capability probe
 * Filter by a single player
+* A grenade mode that lists every throw with its landing callout and replays it with a zoom hold
 * Downloads HLAE and ffmpeg on its own at first run
 
 ## Quick start
@@ -61,6 +62,8 @@ The result lands in `dist/HighlighterCS2/`. Rebuilding leaves the downloaded too
 | `HighlighterCS2.exe match.dem -p s1mple` | Only that player's moments |
 | `HighlighterCS2.exe match.dem -p -n1clxe` | Names starting with a dash work as they are |
 | `HighlighterCS2.exe match.dem -p 76561198000000000` | The same by SteamID64 |
+| `HighlighterCS2.exe match.dem -m nades_smoke` | Every smoke that was thrown, instead of highlights |
+| `HighlighterCS2.exe match.dem -m nades` | Every grenade of every kind |
 | `HighlighterCS2.exe match.dem -one-file` | Join the picked moments into a single video |
 | `HighlighterCS2.exe match.dem -v` | Verbose console output |
 
@@ -143,6 +146,88 @@ The table numbers the clips. Then:
 | `1,3-5,9` | Mixed |
 | `all` | Everything |
 | `none` or Enter | Cancel |
+
+## Grenade mode
+
+Without `-m` the program looks for kills and never mentions grenades. With `-m nades_<kind>` it does the opposite: it lists every grenade of that kind, and records the ones you pick.
+
+```bash
+HighlighterCS2.exe match.dem -m nades_smoke
+```
+
+| Mode | What it lists |
+| --- | --- |
+| `nades_smoke` | Smokes |
+| `nades_flash` | Flashbangs |
+| `nades_he` | HE grenades |
+| `nades_molotov` | Molotovs and incendiaries |
+| `nades_decoy` | Decoys |
+| `nades` | All of the above |
+
+The listing gives the round, the round clock, the thrower, the grenade kind, where it landed, the flight time, and the thrower's position and view angles:
+
+```
+  # | Rnd |  Time | Player       | Side | Kind  | Landed         | Flight | Position / Angles
+  1 |   1 |  0:28 | kulbergenn12 |  T   | smoke | BombsiteB      |   6.5s | -160 888 -104 | -50.6 -146.6
+  2 |   1 |  0:28 | -m0rph_      |  CT  | smoke | PalaceInterior |   1.9s | 143 -1969 -95 | -12.0 -119.2
+  3 |   2 |  0:08 | -m0rph_      |  CT  | smoke | TRamp          |   1.7s | -209 -1912 -168 | 0.2 46.1
+```
+
+The full `setpos` and `setang` commands for reproducing a throw are written into the plan JSON under each clip's `note`.
+
+`--player` narrows the list to one thrower, and `-one-file` joins the picked throws into a single video, exactly as in highlight mode.
+
+### Where it landed
+
+Landing spots are named from the game's own callouts, not from a hand written table. Every CS2 player carries a networked `last_place_name` field taken from the map's nav mesh, so the reader samples player positions across the demo, builds a cloud of `coordinate -> callout` points, and labels each landing by the nearest sample. On the test demo that produced 23 distinct Mirage callouts with the nearest sample typically 3 to 40 units away, which is closer than a player is wide.
+
+The benefit is that this works on every map, including workshop ones, with no per map data to maintain. When no sample lies within 600 units the spot is reported as `unknown`.
+
+### How a throw is filmed
+
+Each grenade becomes one clip built from these beats:
+
+| Beat | When | What happens |
+| --- | --- | --- |
+| clip start | `leadInSeconds` (3 s) before the throw | Camera locks to the thrower, recording starts |
+| `zoom` | `freezeLeadSeconds` (1 s) before the throw | `mirv_fov 22.5`, roughly 4x magnification on the aim point |
+| `unzoom` | `freezeSeconds` (1 s) later, right on the throw | `mirv_fov default` |
+| throw | | Filmed from the thrower's view |
+| cut to the landing | `landingCutSeconds` (0.5 s) after the throw | `spec_mode 4` frees the camera, `spec_goto` teleports it next to the landing spot so you watch the grenade arrive |
+| clip end | `landingHoldSeconds` (3 s) after detonation | Recording stops |
+
+### Long flights are trimmed
+
+A smoke that hangs in the air for ten seconds does not need ten seconds of screen time. When the flight is long enough for the skip to pay for itself, the clip is split in two: the first part runs from the lead in through the throw, then playback jumps forward and the second part picks up `landingLeadSeconds` (3 s) before detonation, already looking at the landing spot.
+
+| Flight | Segments | Recorded | Cut out |
+| --- | --- | --- | --- |
+| 2 s | 1 | 8.0 s | nothing |
+| 5 s | 1 | 11.0 s | nothing |
+| 10 s | 2 | 9.5 s | 6.5 s |
+
+The split follows the same forward seek rule as highlight segmentation, so it only happens when the jump moves strictly forward. Short flights stay in one piece rather than gaining a pointless cut.
+
+The zoom hold runs for real demo time rather than freezing the picture. A hard `demo_pause` stops demo ticks, and every command in the pipeline is scheduled with `mirv_cmd addAtTick`, so nothing would ever fire to unpause it and the recording would hang forever. Slowing the demo with `demo_timescale` does not help either: HLAE pins `host_framerate` while recording and advances the demo one step per rendered frame, so the timescale is ignored and the zoom flashes past in a couple of frames. Half a second of held demo time is the reliable option, and since the player is standing still lining up the throw it reads as a still frame anyway. Raise `freezeSeconds` if you want longer on the aim point.
+
+The landing camera is placed `landingDistance` units from the detonation point, on the line back towards the thrower, raised by `landingHeight`, and angled to look straight at the spot. Standing on the thrower's side means the camera sits in the open space the grenade just flew through instead of inside whatever wall is behind the smoke.
+
+### `nades`
+
+| Key | Default | What it does |
+| --- | --- | --- |
+| `leadInSeconds` | `3.0` | How long before the throw the clip starts |
+| `freezeLeadSeconds` | `1.0` | How long before the throw the zoom hold begins |
+| `freezeSeconds` | `1.0` | How long the zoomed view is held |
+| `zoomFov` | `22.5` | Field of view while zoomed, lower means closer |
+| `landingCutSeconds` | `0.5` | How long after the throw the camera cuts to the landing spot |
+| `landingLeadSeconds` | `3.0` | How much of the flight is kept before detonation when a long flight is trimmed |
+| `landingHoldSeconds` | `3.0` | How long the camera stays there after detonation |
+| `landingDistance` | `220.0` | Camera distance from the detonation point |
+| `landingHeight` | `90.0` | How far the camera is raised |
+| `calloutSampleStride` | `64` | Tick spacing when sampling callouts, lower is more accurate and slower |
+
+---
 
 ## Clip segmentation
 
