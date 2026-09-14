@@ -23,6 +23,7 @@ demo.dem  ->  parse  ->  detect  ->  table in the console  ->  pick moments
 * Filter by a single player
 * A grenade mode that lists every throw with its landing callout and replays it with a zoom hold
 * Downloads HLAE and ffmpeg on its own at first run
+* A JSON plugin API, written for CS2Prak-Launcher, that drives the whole pipeline from another program
 
 ## Quick start
 
@@ -66,6 +67,8 @@ The result lands in `dist/HighlighterCS2/`. Rebuilding leaves the downloaded too
 | `HighlighterCS2.exe match.dem -m nades` | Every grenade of every kind |
 | `HighlighterCS2.exe match.dem -one-file` | Join the picked moments into a single video |
 | `HighlighterCS2.exe match.dem -v` | Verbose console output |
+| `HighlighterCS2.exe --api http` | Serve the plugin API on loopback instead of running the app |
+| `HighlighterCS2.exe --api stdio` | Speak the plugin API over stdin and stdout |
 
 **About the demo name.** A full path is optional. The file next to the exe is checked first, then the search runs through the `demos` folder and the CS2 demo folders, nested ones included. The extension can be left out: `dust1309` is found just like `dust1309.dem`. If the file is missing, the program prints exactly where it looked.
 
@@ -85,6 +88,11 @@ Highlighter/match/
 ```
 
 Nothing is deleted, so the separate clips stay available for editing. Joining runs through the ffmpeg concat demuxer with no re-encoding, so it costs seconds and loses no quality. The same behaviour can be made permanent with `recording.singleFile` in the config; the flag simply forces it on for one run.
+
+**About `--api`.** It replaces the interactive run with the JSON API described in
+[docs/API.md](docs/API.md). `--api-port 0` picks a free port, `--api-token` sets the bearer
+token instead of generating one, and `--api-endpoint-file` writes the base URL and token to a
+JSON file for a launcher that starts the plugin detached.
 
 ## What a run looks like
 
@@ -228,6 +236,35 @@ The landing camera is placed `landingDistance` units from the detonation point, 
 | `calloutSampleStride` | `64` | Tick spacing when sampling callouts, lower is more accurate and slower |
 
 ---
+
+## Plugin API
+
+HighlighterCS2 can run headless and be driven by another program. The API is written
+specifically for [CS2Prak-Launcher](https://github.com/Sevelinish/CS2Prak-Launcher): the
+launcher lists the rounds, the user picks what they want, and the plugin records it.
+
+```bash
+HighlighterCS2.exe --api http --api-port 0 --api-endpoint-file work/api.json
+```
+
+The process prints one JSON line with the base URL and the bearer token, then serves the API
+on loopback. A stdio transport is available with `--api stdio` for launchers that would
+rather own the process and talk over a pipe.
+
+| Command group | What it covers |
+| --- | --- |
+| `handshake`, `system.probe` | Identity, capabilities, whether CS2, HLAE and ffmpeg are ready |
+| `demos.*`, `match.*` | Demo list, map, tick rate, rounds, players, kills |
+| `highlights.find`, `grenades.find` | The tables the user picks from, with stable identifiers |
+| `plan.preview` | What will be recorded, before the game launches |
+| `jobs.*` | Queue a recording, follow its stages, cancel it, collect the files |
+| `config.*` | Read, describe and patch every setting |
+| `output.*` | The videos already written |
+
+Recording is asynchronous. `jobs.submit` returns a job id immediately, and the job publishes
+events through eight stages until the files are on disk.
+
+The full command reference is in [docs/API.md](docs/API.md).
 
 ## Clip segmentation
 
@@ -513,6 +550,14 @@ The `is_warmup_period` field the parser exposes came back as `False` in every CS
 src/highlighter/
 ├── application.py       the whole scenario
 ├── cli.py               command line parsing
+├── api/                 the plugin API built for CS2Prak-Launcher
+│   ├── contract.py      protocol version, command and capability catalogue
+│   ├── service.py       the command implementations
+│   ├── selection.py     the filter model shared by every command
+│   ├── jobs.py          the job queue, states and cancellation
+│   ├── events.py        the event journal and the progress reporter
+│   ├── recorder.py      the headless recording pipeline
+│   └── transport/       http.py  stdio.py
 ├── config/              config.json schema, loading, migrations
 │   └── schema.py  repository.py  migrations.py
 ├── domain/              the domain model

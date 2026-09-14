@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 
+from .api.contract import DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT, HOST_APPLICATION
+
 PROGRAM_NAME = "HighlighterCS2"
 DESCRIPTION = "Find highlight rounds in a CS2 demo and record them through HLAE."
 EPILOG = """examples:
@@ -14,16 +16,38 @@ EPILOG = """examples:
   HighlighterCS2 match.dem -m nades_smoke every smoke that was thrown
   HighlighterCS2 match.dem -m nades       every grenade of every kind
 
+  HighlighterCS2 --api http                start the plugin API on 127.0.0.1
+  HighlighterCS2 --api stdio               speak the plugin API over stdin/stdout
+
 The demo can be a full path or just a file name; plain names are looked up in
 the demo folder and in the CS2 demo folders.
+
+The plugin API is the integration surface built for CS2Prak-Launcher. See
+docs/API.md for the command reference.
 """
 
 PLAYER_FLAGS = ("-p", "--player", "--player-name")
 CANONICAL_PLAYER_FLAG = "--player"
 ONE_FILE_FLAGS = ("-one-file", "--one-file")
 MODE_FLAGS = ("-m", "--mode")
+API_FLAG = "--api"
+API_TRANSPORTS = ("http", "stdio")
 KNOWN_FLAGS = frozenset(
-    {"-h", "--help", "-v", "--verbose", *PLAYER_FLAGS, *ONE_FILE_FLAGS, *MODE_FLAGS}
+    {
+        "-h",
+        "--help",
+        "-v",
+        "--verbose",
+        API_FLAG,
+        "--api-host",
+        "--api-port",
+        "--api-token",
+        "--api-endpoint-file",
+        "--api-no-events",
+        *PLAYER_FLAGS,
+        *ONE_FILE_FLAGS,
+        *MODE_FLAGS,
+    }
 )
 
 
@@ -87,6 +111,7 @@ class CommandLine:
             action="store_true",
             help="join every selected moment into a single video file",
         )
+        CommandLine._add_api_arguments(parser)
         parser.add_argument(
             "-v",
             "--verbose",
@@ -94,3 +119,53 @@ class CommandLine:
             help="print debug output to the console",
         )
         return parser
+
+    @staticmethod
+    def _add_api_arguments(parser: argparse.ArgumentParser) -> None:
+        group = parser.add_argument_group(
+            "plugin API", f"the integration surface built for {HOST_APPLICATION}"
+        )
+        group.add_argument(
+            API_FLAG,
+            dest="api",
+            nargs="?",
+            const=API_TRANSPORTS[0],
+            default=None,
+            choices=API_TRANSPORTS,
+            help="serve the plugin API instead of running the interactive app",
+        )
+        group.add_argument(
+            "--api-host",
+            dest="api_host",
+            default=DEFAULT_HTTP_HOST,
+            metavar="HOST",
+            help=f"address the HTTP API binds to (default {DEFAULT_HTTP_HOST})",
+        )
+        group.add_argument(
+            "--api-port",
+            dest="api_port",
+            type=int,
+            default=DEFAULT_HTTP_PORT,
+            metavar="PORT",
+            help=f"port the HTTP API binds to, 0 picks a free one (default {DEFAULT_HTTP_PORT})",
+        )
+        group.add_argument(
+            "--api-token",
+            dest="api_token",
+            default="",
+            metavar="TOKEN",
+            help="bearer token clients must send, generated when omitted",
+        )
+        group.add_argument(
+            "--api-endpoint-file",
+            dest="api_endpoint_file",
+            default="",
+            metavar="PATH",
+            help="write the base URL and token to this JSON file once the API is up",
+        )
+        group.add_argument(
+            "--api-no-events",
+            dest="api_stream_events",
+            action="store_false",
+            help="stop the stdio transport from pushing job events",
+        )

@@ -11,9 +11,12 @@ THIRD_PARTY_LOGGERS = ("demoparser2", "polars", "pyarrow", "numexpr", "matplotli
 
 
 class LoggingConfigurator:
-    def __init__(self, log_directory: Path, verbose: bool = False) -> None:
+    def __init__(
+        self, log_directory: Path, verbose: bool = False, console: bool = True
+    ) -> None:
         self._log_directory = log_directory
         self._verbose = verbose
+        self._console = console
 
     def configure(self) -> logging.Logger:
         self._log_directory.mkdir(parents=True, exist_ok=True)
@@ -23,17 +26,6 @@ class LoggingConfigurator:
         logger.handlers.clear()
         logger.propagate = False
 
-        console_handler = RichHandler(
-            rich_tracebacks=True,
-            show_path=False,
-            show_time=False,
-            markup=True,
-        )
-        console_handler.setLevel(
-            logging.DEBUG if self._verbose else QUIET_CONSOLE_LEVEL
-        )
-        console_handler.setFormatter(logging.Formatter("%(message)s"))
-
         file_handler = logging.FileHandler(
             self._log_directory / "highlighter.log", encoding="utf-8"
         )
@@ -42,10 +34,22 @@ class LoggingConfigurator:
             logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
         )
 
-        logger.addHandler(console_handler)
         logger.addHandler(file_handler)
+        if self._console:
+            logger.addHandler(self._console_handler())
         self._quiet_third_parties()
         return logger
+
+    def _console_handler(self) -> logging.Handler:
+        handler = RichHandler(
+            rich_tracebacks=True,
+            show_path=False,
+            show_time=False,
+            markup=True,
+        )
+        handler.setLevel(logging.DEBUG if self._verbose else QUIET_CONSOLE_LEVEL)
+        handler.setFormatter(logging.Formatter("%(message)s"))
+        return handler
 
     def _quiet_third_parties(self) -> None:
         root = logging.getLogger()

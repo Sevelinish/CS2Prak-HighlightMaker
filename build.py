@@ -16,6 +16,7 @@ SHIPPED_FILES = ("README.md", "README.ru.md")
 CONFIG_FILE = "config.json"
 CONFIG_TEMPLATE = "config.example.json"
 SHIPPED_DIRECTORIES = ("demos",)
+COPIED_DIRECTORIES = ("docs",)
 PRESERVED_DIRECTORIES = ("tools", "work", "logs", "Highlighter", "demos")
 PRESERVED_FILES = (CONFIG_FILE,)
 BUNDLED_PACKAGES = ("demoparser2", "polars", "pyarrow", "numpy", "pandas", "tqdm", "rich")
@@ -116,6 +117,11 @@ def copy_release_files() -> None:
 
     for directory_name in SHIPPED_DIRECTORIES:
         (RELEASE_DIRECTORY / directory_name).mkdir(parents=True, exist_ok=True)
+
+    for directory_name in COPIED_DIRECTORIES:
+        source = ROOT / directory_name
+        if source.is_dir():
+            shutil.copytree(source, RELEASE_DIRECTORY / directory_name, dirs_exist_ok=True)
 
 
 def copy_default_config() -> None:

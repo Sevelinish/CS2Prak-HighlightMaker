@@ -13,8 +13,8 @@ from ..media.crosshair import CrosshairFilterBuilder
 from ..media.encoders import EncoderProfile, EncoderSelector
 from ..media.output_library import OutputLibrary
 from ..media.reel import Reel, ReelBuilder
+from ..infrastructure.progress import ProgressReporter
 from ..plan.models import RecordingPlan
-from ..presentation.steps import StepReporter
 from ..provisioning.hlae_installation import HlaeInstallation
 from ..provisioning.toolchain import Toolchain
 from .graphics import GraphicsProfile
@@ -50,7 +50,7 @@ class RecordingSession:
     def reel(self) -> Reel | None:
         return self._reel
 
-    def execute(self, plan: RecordingPlan, reporter: StepReporter) -> list[AssembledClip]:
+    def execute(self, plan: RecordingPlan, reporter: ProgressReporter) -> list[AssembledClip]:
         take_directory = self._prepare_take_directory(plan)
         script_writer = ScriptWriter(
             self._installation.config_directory, self._work_directory / "scripts"
@@ -77,7 +77,7 @@ class RecordingSession:
         plan: RecordingPlan,
         entry_script: str,
         take_directory: Path,
-        reporter: StepReporter,
+        reporter: ProgressReporter,
         encoder: EncoderProfile,
     ) -> None:
         hlae = HlaeInstallation(self._toolchain.hlae, self._config.game.hook_dll_relative_path)
@@ -130,7 +130,7 @@ class RecordingSession:
         plan: RecordingPlan,
         take_directory: Path,
         encoder: EncoderProfile,
-        reporter: StepReporter,
+        reporter: ProgressReporter,
     ) -> list[AssembledClip]:
         reporter.begin("Saving videos")
         if self._config.crosshair.enabled:
@@ -148,7 +148,7 @@ class RecordingSession:
         return assembled
 
     def _join(
-        self, assembled: list[AssembledClip], library: OutputLibrary, reporter: StepReporter
+        self, assembled: list[AssembledClip], library: OutputLibrary, reporter: ProgressReporter
     ) -> Reel | None:
         if not self._config.recording.single_file or not assembled:
             return None
@@ -169,7 +169,7 @@ class RecordingSession:
 
     def _report_progress(
         self,
-        reporter: StepReporter,
+        reporter: ProgressReporter,
         started: bool,
         plan: RecordingPlan,
         take_directory: Path,
