@@ -274,3 +274,120 @@ def test_editing_one_steam_variable_keeps_the_rest(tmp_path: Path):
 
     assert config.game.steam_environment["SteamClientLaunch"] == "0"
     assert config.game.steam_environment["SteamAppId"] == "730"
+
+
+def make_profile(tmp_path: Path, settings_file: Path, game: GameConfig | None = None):
+    return GraphicsProfile(
+        StubInstallation(settings_file),
+        RecordingConfig(),
+        game or GameConfig(),
+        tmp_path / "work",
+    )
+
+
+def test_the_preset_records_only_what_it_changed(tmp_path: Path):
+    settings_file = tmp_path / "cs2_video.txt"
+    settings_file.write_text(SAMPLE_VIDEO_SETTINGS, encoding="utf-8")
+    profile = make_profile(tmp_path, settings_file)
+
+    profile.apply()
+    record = json.loads(profile.state_file.read_text(encoding="utf-8"))
+    keys = {change["key"] for change in record["changes"]}
+
+    assert "setting.defaultres" in keys
+    assert "VendorID" not in keys
+    assert "Version" not in keys
+
+
+def test_the_preset_puts_the_original_values_back(tmp_path: Path):
+    settings_file = tmp_path / "cs2_video.txt"
+    settings_file.write_text(SAMPLE_VIDEO_SETTINGS, encoding="utf-8")
+    profile = make_profile(tmp_path, settings_file)
+
+    profile.apply()
+    profile.restore()
+
+    assert settings_file.read_text(encoding="utf-8") == SAMPLE_VIDEO_SETTINGS
+
+
+def test_settings_the_user_changed_in_between_are_kept(tmp_path: Path):
+    settings_file = tmp_path / "cs2_video.txt"
+    settings_file.write_text(SAMPLE_VIDEO_SETTINGS, encoding="utf-8")
+    profile = make_profile(tmp_path, settings_file)
+
+    profile.apply()
+    changed = settings_file.read_text(encoding="utf-8").replace(
+        '"setting.msaa_samples"\t\t"8"', '"setting.msaa_samples"\t\t"4"'
+    )
+    settings_file.write_text(changed, encoding="utf-8")
+    profile.restore()
+    content = settings_file.read_text(encoding="utf-8")
+
+    assert '"setting.msaa_samples"\t\t"4"' in content
+    assert '"setting.defaultres"\t\t"1280"' in content
+
+
+def test_settings_the_user_added_afterwards_survive(tmp_path: Path):
+    settings_file = tmp_path / "cs2_video.txt"
+    settings_file.write_text(SAMPLE_VIDEO_SETTINGS, encoding="utf-8")
+    profile = make_profile(tmp_path, settings_file)
+
+    profile.apply()
+    settings_file.write_text(
+        settings_file.read_text(encoding="utf-8").replace(
+            '"VendorID"\t\t"4318"', '"VendorID"\t\t"4318"\n\t"setting.mine"\t\t"7"'
+        ),
+        encoding="utf-8",
+    )
+    profile.restore()
+
+    assert '"setting.mine"\t\t"7"' in settings_file.read_text(encoding="utf-8")
+
+
+def test_restoring_twice_changes_nothing_the_second_time(tmp_path: Path):
+    settings_file = tmp_path / "cs2_video.txt"
+    settings_file.write_text(SAMPLE_VIDEO_SETTINGS, encoding="utf-8")
+    profile = make_profile(tmp_path, settings_file)
+
+    profile.apply()
+    first = profile.restore()
+    second = profile.restore()
+
+    assert first > 0
+    assert second == 0
+    assert not profile.state_file.exists()
+
+
+def test_a_second_run_still_remembers_the_real_originals(tmp_path: Path):
+    settings_file = tmp_path / "cs2_video.txt"
+    settings_file.write_text(SAMPLE_VIDEO_SETTINGS, encoding="utf-8")
+    profile = make_profile(tmp_path, settings_file)
+
+    profile.apply()
+    profile.apply()
+    profile.restore()
+
+    assert settings_file.read_text(encoding="utf-8") == SAMPLE_VIDEO_SETTINGS
+
+
+def test_keeping_our_preset_is_honoured(tmp_path: Path):
+    settings_file = tmp_path / "cs2_video.txt"
+    settings_file.write_text(SAMPLE_VIDEO_SETTINGS, encoding="utf-8")
+    profile = make_profile(tmp_path, settings_file, GameConfig(restore_graphics_on_exit=False))
+
+    profile.apply()
+    profile.restore()
+
+    assert '"setting.defaultres"\t\t"1920"' in settings_file.read_text(encoding="utf-8")
+
+
+def test_an_older_full_file_backup_is_still_honoured(tmp_path: Path):
+    settings_file = tmp_path / "cs2_video.txt"
+    settings_file.write_text("spoiled", encoding="utf-8")
+    backup = settings_file.with_name(settings_file.name + ".highlighter-backup")
+    backup.write_text(SAMPLE_VIDEO_SETTINGS, encoding="utf-8")
+
+    make_profile(tmp_path, settings_file).restore()
+
+    assert settings_file.read_text(encoding="utf-8") == SAMPLE_VIDEO_SETTINGS
+    assert not backup.exists()

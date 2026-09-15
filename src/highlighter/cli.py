@@ -15,6 +15,7 @@ EPILOG = """examples:
   HighlighterCS2 match.dem -one-file      join the picked moments into one video
   HighlighterCS2 match.dem -exit0         leave the game running for the next batch
   HighlighterCS2 -update                  install the newest release, keeping clips and config
+  HighlighterCS2 -demoget                 import new demos from Downloads and the game folders
   HighlighterCS2 match.dem -m nades_smoke every smoke that was thrown
   HighlighterCS2 match.dem -m nades       every grenade of every kind
 
@@ -33,6 +34,7 @@ CANONICAL_PLAYER_FLAG = "--player"
 ONE_FILE_FLAGS = ("-one-file", "--one-file")
 KEEP_GAME_FLAGS = ("-exit0", "--exit0", "--keep-game-open")
 UPDATE_FLAGS = ("-update", "--update")
+DEMO_GET_FLAGS = ("-demoget", "--demoget")
 MODE_FLAGS = ("-m", "--mode")
 API_FLAG = "--api"
 API_TRANSPORTS = ("http", "stdio")
@@ -52,6 +54,7 @@ KNOWN_FLAGS = frozenset(
         *ONE_FILE_FLAGS,
         *KEEP_GAME_FLAGS,
         *UPDATE_FLAGS,
+        *DEMO_GET_FLAGS,
         *MODE_FLAGS,
     }
 )
@@ -128,6 +131,12 @@ class CommandLine:
             dest="update",
             action="store_true",
             help="check for a newer release, download it and install it",
+        )
+        parser.add_argument(
+            *DEMO_GET_FLAGS,
+            dest="demo_get",
+            action="store_true",
+            help="find new demos in Downloads and the CS2 folders and import them",
         )
         CommandLine._add_api_arguments(parser)
         parser.add_argument(

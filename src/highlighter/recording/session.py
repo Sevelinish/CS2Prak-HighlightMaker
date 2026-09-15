@@ -88,7 +88,12 @@ class RecordingSession:
         script_writer = ScriptWriter(
             self._installation.config_directory, self._work_directory / "scripts"
         )
-        graphics = GraphicsProfile(self._installation, self._config.recording, self._config.game)
+        graphics = GraphicsProfile(
+            self._installation,
+            self._config.recording,
+            self._config.game,
+            self._work_directory,
+        )
         encoder = EncoderSelector(self._toolchain.ffmpeg, self._config.encoding).select()
         watcher = TakeWatcher(
             plan,
@@ -127,7 +132,6 @@ class RecordingSession:
 
         bundle = self._bundle(plan, take_directory, encoder, handover=False)
         script_writer.write(bundle)
-        graphics.restore_pending()
         graphics.apply()
         self._launch(plan, bundle, watcher, script_writer, reporter)
 
@@ -347,7 +351,6 @@ class RecordingSession:
             return
 
         graphics.restore()
-        graphics.restore_pending()
         script_writer.cleanup()
         self._store.clear()
 

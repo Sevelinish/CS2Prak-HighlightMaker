@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 from highlighter.api.runtime import ApiOptions, ApiRuntime
 from highlighter.application import Application
 from highlighter.cli import CommandLine
+from highlighter.importing.command import DemoGetCommand
 from highlighter.update.command import UpdateCommand
 
 
@@ -15,6 +16,9 @@ def main() -> int:
     arguments = CommandLine.parse(sys.argv[1:])
     if arguments.update:
         return UpdateCommand(verbose=arguments.verbose).run()
+
+    if arguments.demo_get:
+        return DemoGetCommand(verbose=arguments.verbose).run()
 
     if arguments.api:
         return ApiRuntime(

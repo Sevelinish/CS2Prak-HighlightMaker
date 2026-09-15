@@ -373,7 +373,8 @@ class PluginService:
         if installation is None:
             return 0
         config = self._workspace.config
-        return GraphicsProfile(installation, config.recording, config.game).restore_pending()
+        work = self._workspace.paths.resolve(config.paths.work_directory)
+        return GraphicsProfile(installation, config.recording, config.game, work).restore()
 
     def jobs_get(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         return self._job(payload).to_mapping()

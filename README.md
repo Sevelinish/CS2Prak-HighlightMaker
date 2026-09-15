@@ -25,6 +25,7 @@ demo.dem  ->  parse  ->  detect  ->  table in the console  ->  pick moments
 * Downloads HLAE and ffmpeg on its own at first run
 * `-exit0` keeps the game open so a second batch skips the CS2 startup
 * `-update` installs the newest release on its own and keeps your clips and settings
+* `-demoget` finds new demos in Downloads, unpacks them and files them under a name you choose
 * A JSON plugin API, written for CS2Prak-Launcher, that drives the whole pipeline from another program
 
 ## Quick start
@@ -70,6 +71,7 @@ The result lands in `dist/HighlighterCS2/`. Rebuilding leaves the downloaded too
 | `HighlighterCS2.exe match.dem -one-file` | Join the picked moments into a single video |
 | `HighlighterCS2.exe match.dem -exit0` | Leave the game running so the next batch skips the startup |
 | `HighlighterCS2.exe -update` | Install the newest release, keeping clips and settings |
+| `HighlighterCS2.exe -demoget` | Import new demos from Downloads and the game folders |
 | `HighlighterCS2.exe match.dem -v` | Verbose console output |
 | `HighlighterCS2.exe --api http` | Serve the plugin API on loopback instead of running the app |
 | `HighlighterCS2.exe --api stdio` | Speak the plugin API over stdin and stdout |
@@ -95,6 +97,8 @@ Nothing is deleted, so the separate clips stay available for editing. Joining ru
 
 **About `-exit0`.** Also spelled `--exit0` or `--keep-game-open`. See
 [Keeping the game open](#keeping-the-game-open).
+
+**About `-demoget`.** Also spelled `--demoget`. See [Importing demos](#importing-demos).
 
 **About `-update`.** Also spelled `--update`. See [Updating](#updating).
 
@@ -315,6 +319,33 @@ The landing camera is placed `landingDistance` units from the detonation point, 
 | `calloutSampleStride` | `64` | Tick spacing when sampling callouts, lower is more accurate and slower |
 
 ---
+
+## Importing demos
+
+```bash
+HighlighterCS2.exe -demoget
+```
+
+It looks in your Downloads folder and in the two CS2 demo folders. The `demos` folder itself is
+not searched, because anything in there you already put there yourself.
+
+FACEIT hands out demos as `.dem.zst` archives with names like
+`1-9b7f9f3a-0f64-428e-9412-76baeeecd686-1-1.dem.zst`, which tell you nothing. Each file found is
+unpacked, its header is read for the map and the server, and you are asked what to call it. The
+name you type becomes `demos/<name>.dem`. Press enter to take the suggestion, type `skip` to pass
+on one, or `stop` to finish early.
+
+```
+  1/3  Unpacking 1-9b7f9f3a-0f64-428e-9412-76baeeecd686-1-1.dem.zst
+       · de_dust2 from FACEIT 191 MB
+       Name for this demo (skip to pass, stop to finish) [dust21509]:
+```
+
+`.dem.gz` and `.dem.bz2` are handled as well, and a plain `.dem` sitting in the game folder is
+copied rather than moved. Nothing is ever deleted from Downloads or from the game folder.
+
+Imported files are noted in `work/imported_demos.json` by name and size, so a second run only
+offers what is genuinely new. Change the file and it counts as new again.
 
 ## Updating
 
@@ -746,12 +777,22 @@ Without `record screen enabled 1` HLAE happily creates the take and writes `audi
 
 ### Graphics settings
 
-With `applyHighGraphics: true` the application edits `cs2_video.txt` in the `userdata` folder:
+With `applyHighGraphics: true` the application edits `cs2_video.txt` in the `userdata` folder,
+and it is careful about it because those are your settings:
 
-* it makes a `cs2_video.txt.highlighter-backup` copy first
 * it changes **only keys that already exist**, inventing none, so the file never breaks
+* it writes down the old value of every key it touched, in `work/graphics_preset.json`
 * it sets `Autoconfig: 0` so CS2 does not overwrite the settings on startup
-* it restores the original afterwards when `restoreGraphicsOnExit` is on
+* afterwards it puts back **only those keys**, and only where the value is still the one it wrote
+
+That last point is the one that matters. The file is never replaced wholesale, so anything you
+changed yourself in between is kept: a setting you edited by hand is recognised as yours and left
+alone, and settings the recorder never touched are not affected at all. If the program is killed
+before it can tidy up, the record survives and the next run puts everything back.
+
+`restoreGraphicsOnExit: false` keeps the recording preset in place on purpose, and
+`applyHighGraphics: false` means your settings are never touched at all, at the cost of recording
+at whatever quality you play on.
 
 Turn `applyHighGraphics` off if you would rather record with your own settings. Note that CS2 rewrites this file while running, so the restore only wins once the game has closed.
 
@@ -766,6 +807,11 @@ src/highlighter/
 ├── application.py       the whole scenario
 ├── cli.py               command line parsing
 ├── version.py           the version everything reports and compares against
+├── importing/           bringing new demos in from Downloads and the game folders
+│   ├── sources.py       where to look
+│   ├── archives.py      unpacking zst, gz and bz2
+│   ├── ledger.py        what was imported already
+│   └── importer.py  command.py
 ├── update/              checking GitHub and installing a newer release
 │   ├── checker.py       what the newest release is
 │   ├── payload.py       downloading, unpacking and verifying it

@@ -513,11 +513,13 @@ you would rather no port were opened at all.
 
 ### Video settings while warm
 
-Recording rewrites the CS2 video settings and puts them back when the game closes. While a
-session is warm the game still owns those files, so the restore is deferred. It happens on the
-next cold launch, or on `session.release`. Backups are kept next to the originals with a
-`.highlighter-backup` suffix, so the values that come back are the ones from before the first
-recording.
+Recording changes a handful of CS2 video settings and puts them back when the game closes. While
+a session is warm the game still owns those files, so the restore is deferred. It happens on the
+next cold launch, or on `session.release`.
+
+Only the keys the recorder actually changed are touched, and the old value of each one is written
+to `work/graphics_preset.json`. Putting them back skips any key the user has since changed
+themselves, so a settings edit made between two recordings is never overwritten.
 
 ## Events
 
