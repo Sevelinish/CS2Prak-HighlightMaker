@@ -21,7 +21,7 @@ class ScriptWriter:
             raise RecordingError(f"CS2 config directory is missing: {self._config_directory}")
 
         self.cleanup()
-        for script in bundle.files:
+        for script in self._ordered(bundle):
             target = self._config_directory / script.file_name
             target.write_text(script.content, encoding="utf-8")
             self._written.append(target)
@@ -29,6 +29,33 @@ class ScriptWriter:
 
         self._logger.debug("Wrote %d mirv scripts to %s", len(self._written), self._config_directory)
         return list(self._written)
+
+    @staticmethod
+    def _ordered(bundle: ScriptBundle) -> list:
+        if not bundle.hands_over:
+            return list(bundle.files)
+        others = [item for item in bundle.files if item.name != bundle.handover_script]
+        handover = [item for item in bundle.files if item.name == bundle.handover_script]
+        return others + handover
+
+    def replace(self, script_name: str, content: str) -> Path:
+        target = self._config_directory / f"{script_name}.cfg"
+        target.write_text(content, encoding="utf-8")
+        if target not in self._written:
+            self._written.append(target)
+        self._mirror(target.name, content)
+        self._logger.debug("Rewrote %s", target.name)
+        return target
+
+    def drop(self, script_name: str) -> bool:
+        target = self._config_directory / f"{script_name}.cfg"
+        if not target.is_file():
+            return False
+        target.unlink(missing_ok=True)
+        if target in self._written:
+            self._written.remove(target)
+        self._logger.debug("Dropped %s", target.name)
+        return True
 
     def cleanup(self) -> None:
         for stale in self._config_directory.glob(f"{SCRIPT_PREFIX}*.cfg"):

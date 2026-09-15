@@ -45,9 +45,10 @@ class RecordingJobExecutor:
 
         installation = self._installation(config)
         toolchain = self._provision(tracker, config)
-        assembled, reel = self._record(record, tracker, config, plan, installation, toolchain)
+        session = self._session(config, installation, toolchain)
+        assembled, reel = self._record(record, tracker, plan, installation, session)
         self._reveal(tracker, config, plan, assembled)
-        return self._result(plan, assembled, reel)
+        return self._result(plan, assembled, reel, session)
 
     def _plan(
         self, record: JobRecord, tracker: JobStageTracker, config: ApplicationConfig
@@ -138,20 +139,10 @@ class RecordingJobExecutor:
         tracker.done(f"{toolchain.hlae.name} and {toolchain.ffmpeg.name} ready")
         return toolchain
 
-    def _record(
-        self,
-        record: JobRecord,
-        tracker: JobStageTracker,
-        config: ApplicationConfig,
-        plan: RecordingPlan,
-        installation: Cs2Installation,
-        toolchain,
-    ) -> tuple[list[AssembledClip], Reel | None]:
-        watcher = GameProcessWatcher(installation.executable.name)
-        record.cancellation.register(watcher.terminate)
-        record.cancellation.raise_if_cancelled()
-
-        session = RecordingSession(
+    def _session(
+        self, config: ApplicationConfig, installation: Cs2Installation, toolchain
+    ) -> RecordingSession:
+        return RecordingSession(
             console=self._console,
             config=config,
             installation=installation,
@@ -159,6 +150,19 @@ class RecordingJobExecutor:
             work_directory=self._workspace.paths.resolve(config.paths.work_directory),
             output_root=self._workspace.paths.resolve(config.paths.output_directory),
         )
+
+    def _record(
+        self,
+        record: JobRecord,
+        tracker: JobStageTracker,
+        plan: RecordingPlan,
+        installation: Cs2Installation,
+        session: RecordingSession,
+    ) -> tuple[list[AssembledClip], Reel | None]:
+        watcher = GameProcessWatcher(installation.executable.name)
+        record.cancellation.register(watcher.terminate)
+        record.cancellation.raise_if_cancelled()
+
         assembled = session.execute(plan, tracker)
         record.cancellation.raise_if_cancelled()
 
@@ -191,9 +195,15 @@ class RecordingJobExecutor:
 
     @staticmethod
     def _result(
-        plan: RecordingPlan, assembled: list[AssembledClip], reel: Reel | None
+        plan: RecordingPlan,
+        assembled: list[AssembledClip],
+        reel: Reel | None,
+        session: RecordingSession,
     ) -> JobResult:
+        warm = session.warm_session
         return JobResult(
+            reused_game=session.reused_game,
+            warm_session=warm.to_mapping() if warm is not None else None,
             output_directory=str(plan.output_directory / plan.demo_name),
             requested_clips=plan.clip_count,
             artifacts=[

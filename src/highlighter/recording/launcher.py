@@ -11,6 +11,7 @@ from ..infrastructure.errors import RecordingError
 from ..infrastructure.logging import get_logger
 from ..provisioning.hlae_installation import HlaeInstallation
 from .game_process import GameProcessWatcher
+from .netcon import NetconEndpoint
 
 SECONDS_PER_MINUTE = 60
 STEAM_PATH_VARIABLE = "SteamPath"
@@ -28,6 +29,7 @@ class HlaeLauncher:
         game: GameConfig,
         steam_root: Path | None,
         watcher: GameProcessWatcher | None = None,
+        netcon: NetconEndpoint | None = None,
     ) -> None:
         self._hlae = hlae
         self._installation = installation
@@ -35,6 +37,7 @@ class HlaeLauncher:
         self._game = game
         self._steam_root = steam_root
         self._watcher = watcher or GameProcessWatcher(installation.executable.name)
+        self._netcon = netcon
         self._logger = get_logger("recording.launcher")
 
     def run(
@@ -44,14 +47,27 @@ class HlaeLauncher:
         on_launched: Callable[[], None] | None = None,
         on_progress: Callable[[float], None] | None = None,
     ) -> None:
+        self.start(entry_script, demo_path)
+        if on_launched is not None:
+            on_launched()
+        self.wait_for_exit(on_progress)
+
+    def start(self, entry_script: str, demo_path: Path) -> None:
         self._hlae.verify_path_is_ascii()
         self._guard_against_running_game()
 
         self._inject(entry_script, demo_path)
         self._await_game_start()
-        if on_launched is not None:
-            on_launched()
+
+    def wait_for_exit(self, on_progress: Callable[[float], None] | None = None) -> None:
         self._await_game_exit(on_progress)
+
+    def is_running(self) -> bool:
+        return self._watcher.is_running()
+
+    @property
+    def executable_name(self) -> str:
+        return self._watcher.executable_name
 
     def build_arguments(self, entry_script: str, demo_path: Path) -> list[str]:
         placeholders = {
@@ -133,6 +149,8 @@ class HlaeLauncher:
 
     def _game_arguments(self, entry_script: str, demo_path: Path) -> str:
         tokens = list(self._game.launch_arguments)
+        if self._netcon is not None:
+            tokens.extend(self._netcon.launch_arguments())
         tokens.append(FULLSCREEN_FLAG if self._recording.fullscreen else WINDOWED_FLAG)
         tokens.extend(["-w", str(self._recording.width)])
         tokens.extend(["-h", str(self._recording.height)])

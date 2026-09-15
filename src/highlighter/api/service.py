@@ -2,14 +2,23 @@ from __future__ import annotations
 
 import threading
 from pathlib import Path
+
+from rich.console import Console
 from typing import Any, Mapping
 
 from ..config.repository import ConfigRepository
+from ..domain.camera import LandingCameraDirector
 from ..domain.grenade import GrenadeKind
 from ..media.folder_opener import FolderOpener
 from ..plan.builder import RecordingPlanBuilder
 from ..plan.models import RecordingPlan
 from ..plan.nade_builder import NadePlanBuilder
+from ..recording.game_process import GameProcessWatcher
+from ..recording.graphics import GraphicsProfile
+from ..recording.warm_session import WarmSessionStore
+from ..update.checker import UpdateChecker
+from ..update.installer import UpdateInstaller
+from ..version import Version, __version__
 from .configuration import ConfigMerger, ConfigSchema
 from .contract import (
     CapabilityDescriptor,
@@ -114,6 +123,11 @@ class PluginService:
                 "cancellation", True, "Queued jobs stop instantly, running jobs close the game"
             ),
             CapabilityDescriptor("planPreview", True, "Inspect a plan before the game launches"),
+            CapabilityDescriptor(
+                "warmGameSession",
+                True,
+                "The game can stay open so the next job skips the CS2 startup",
+            ),
             CapabilityDescriptor("autoDownload", True, "HLAE and ffmpeg install themselves"),
             CapabilityDescriptor(
                 "concurrentRecording", False, "CS2 and HLAE allow only one recording at a time"
@@ -231,7 +245,10 @@ class PluginService:
             "count": len(selected),
             "selection": criteria.to_mapping(),
             "places": sorted({item.landing_place for item in selected}),
-            "grenades": [GrenadeView.render(match, item) for item in selected],
+            "grenades": [
+                GrenadeView.render(match, item, self._landing_director())
+                for item in selected
+            ],
         }
 
     def plan_preview(self, payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -271,6 +288,8 @@ class PluginService:
         if bool(payload.get("validate", True)):
             self._validate(demo_path, source, criteria, config, payload)
 
+        overrides = self._with_keep_game_open(overrides, payload)
+
         request = JobRequest(
             demo_path=demo_path,
             source=source,
@@ -280,6 +299,81 @@ class PluginService:
         )
         record = self._jobs.submit(new_identifier(), request)
         return record.to_mapping()
+
+    @staticmethod
+    def _with_keep_game_open(
+        overrides: Mapping[str, Any], payload: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        wanted = payload.get("keepGameOpen")
+        if wanted is None:
+            return dict(overrides)
+        merged = dict(overrides)
+        recording = dict(merged.get("recording") or {})
+        recording["keepGameOpen"] = bool(wanted)
+        merged["recording"] = recording
+        return merged
+
+    def update_check(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        config = self._workspace.config
+        return UpdateChecker(config.update, Version.current()).check().to_mapping()
+
+    def update_install(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        config = self._workspace.config
+        check = UpdateChecker(config.update, Version.current()).check()
+        if not check.available or check.release is None:
+            return {
+                "installing": False,
+                "reason": f"{__version__} is already the newest release",
+                "check": check.to_mapping(),
+            }
+
+        outcome = UpdateInstaller(
+            Console(quiet=True), self._workspace.paths, config
+        ).install(check.release)
+        return {"installing": True, "check": check.to_mapping(), **outcome.to_mapping()}
+
+    def session_get(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        session = self._warm_store().live()
+        return {
+            "active": session is not None,
+            "session": session.to_mapping() if session is not None else None,
+        }
+
+    def session_release(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        store = self._warm_store()
+        session = store.live()
+        if session is None:
+            store.clear()
+            return {"released": False, "reason": "no game is being kept open"}
+
+        GameProcessWatcher(session.executable).terminate()
+        store.clear()
+        return {
+            "released": True,
+            "pid": session.pid,
+            "graphicsRestored": self._restore_graphics(),
+        }
+
+    def _landing_director(self) -> LandingCameraDirector:
+        nades = self._workspace.config.nades
+        return LandingCameraDirector(
+            distance=nades.landing_distance,
+            height=nades.landing_height,
+            minimum_approach=nades.minimum_approach,
+            mode=nades.camera_mode,
+        )
+
+    def _warm_store(self) -> WarmSessionStore:
+        return WarmSessionStore(
+            self._workspace.paths.resolve(self._workspace.config.paths.work_directory)
+        )
+
+    def _restore_graphics(self) -> int:
+        installation = self._workspace.installation()
+        if installation is None:
+            return 0
+        config = self._workspace.config
+        return GraphicsProfile(installation, config.recording, config.game).restore_pending()
 
     def jobs_get(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         return self._job(payload).to_mapping()

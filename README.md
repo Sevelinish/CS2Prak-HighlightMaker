@@ -23,6 +23,8 @@ demo.dem  ->  parse  ->  detect  ->  table in the console  ->  pick moments
 * Filter by a single player
 * A grenade mode that lists every throw with its landing callout and replays it with a zoom hold
 * Downloads HLAE and ffmpeg on its own at first run
+* `-exit0` keeps the game open so a second batch skips the CS2 startup
+* `-update` installs the newest release on its own and keeps your clips and settings
 * A JSON plugin API, written for CS2Prak-Launcher, that drives the whole pipeline from another program
 
 ## Quick start
@@ -66,6 +68,8 @@ The result lands in `dist/HighlighterCS2/`. Rebuilding leaves the downloaded too
 | `HighlighterCS2.exe match.dem -m nades_smoke` | Every smoke that was thrown, instead of highlights |
 | `HighlighterCS2.exe match.dem -m nades` | Every grenade of every kind |
 | `HighlighterCS2.exe match.dem -one-file` | Join the picked moments into a single video |
+| `HighlighterCS2.exe match.dem -exit0` | Leave the game running so the next batch skips the startup |
+| `HighlighterCS2.exe -update` | Install the newest release, keeping clips and settings |
 | `HighlighterCS2.exe match.dem -v` | Verbose console output |
 | `HighlighterCS2.exe --api http` | Serve the plugin API on loopback instead of running the app |
 | `HighlighterCS2.exe --api stdio` | Speak the plugin API over stdin and stdout |
@@ -89,6 +93,11 @@ Highlighter/match/
 
 Nothing is deleted, so the separate clips stay available for editing. Joining runs through the ffmpeg concat demuxer with no re-encoding, so it costs seconds and loses no quality. The same behaviour can be made permanent with `recording.singleFile` in the config; the flag simply forces it on for one run.
 
+**About `-exit0`.** Also spelled `--exit0` or `--keep-game-open`. See
+[Keeping the game open](#keeping-the-game-open).
+
+**About `-update`.** Also spelled `--update`. See [Updating](#updating).
+
 **About `--api`.** It replaces the interactive run with the JSON API described in
 [docs/API.md](docs/API.md). `--api-port 0` picks a free port, `--api-token` sets the bearer
 token instead of generating one, and `--api-endpoint-file` writes the base URL and token to a
@@ -99,35 +108,50 @@ JSON file for a launcher that starts the plugin detached.
 Every stage prints its own line with a number, an outcome and details:
 
 ```
-1/8 Reading match.dem
-      OK de_dust2, 19 rounds, 10 players
-2/8 Looking up 'n1clxe'
-      OK -n1clxe (slot 2)
-3/8 Scanning for highlights for -n1clxe
-      OK 5 found
+╭───────────────────────────────╮
+│  HighlighterCS2 1.2.0         │
+│  CS2 demo highlight recorder  │
+╰───────────────────────────────╯
+
+  1/8  Reading match.dem
+       [+] de_dust2, 19 rounds, 10 players  2.4s
+  2/8  Looking up 'n1clxe'
+       [+] -n1clxe (slot 2)  0.0s
+  3/8  Scanning for highlights for -n1clxe
+       [+] 5 found  0.1s
 
             the table is printed here and the selection is asked for
 
-4/8 Planning clips
-      work/plans/match.json
-      OK 2 clips, 3 segments, 24s of footage
-5/8 Launching Counter-Strike 2
-      encoder h264_nvenc (hardware)
-      HLAE injects the hook, then hands the game over
-      OK game is up
-6/8 Recording 2 clip(s) in 3 segment(s)
-      the game closes itself after the last clip
-      2/2 clips, elapsed 03:30
-      OK 2 of 2 clips captured
-7/8 Saving videos
-      OK 2 of 2 clips written
-8/8 Opening the output folder
-      OK D:\...\Highlighter\match
+  4/8  Planning clips
+        ·  work/plans/match.json
+       [+] 2 clips, 3 segments, 24s of footage  0.0s
+  5/8  Starting Counter-Strike 2
+        ·  encoder h264_nvenc (hardware)
+        ·  HLAE injects the hook, then hands the game over
+       [+] game is up  1m 34s
+  6/8  Recording 2 clip(s) in 3 segment(s)
+        ·  the game closes itself once the takes are written
+        ·  2/3 segments, elapsed 03:30
+        ·  closing the game
+       [+] 3 of 3 segment(s) captured  4m 12s
+  7/8  Saving videos
+       [+] 2 of 2 clips written  3.8s
+  8/8  Opening the output folder
+       [+] D:\...\Highlighter\match  0.0s
+
+Clips written
+╭─────┬──────────────────────────────────┬──────────┬───────────┬───────╮
+│   # │ File                             │   Length │      Size │ Audio │
+├─────┼──────────────────────────────────┼──────────┼───────────┼───────┤
+│   1 │ 01_round08_n1clxe_awp_double.mp4 │      12s │   23.0 MB │  yes  │
+│   2 │ 02_round09_n1clxe_awp_double.mp4 │     9.8s │   19.9 MB │  yes  │
+╰─────┴──────────────────────────────────┴──────────┴───────────┴───────╯
+2/2 clips saved to D:\...\Highlighter\match
 ```
 
-Without `--player` there are seven steps, the player lookup is skipped. While recording, progress is printed every 30 seconds. The output folder opens by itself, which the `recording.openOutputFolder` key turns off.
+Every step carries how long it took, so a slow run shows where the time actually went. Without `--player` there are seven steps, the player lookup is skipped. While recording, progress is printed every 30 seconds. The output folder opens by itself, which the `recording.openOutputFolder` key turns off.
 
-A failed step is marked separately, so it is immediately clear where things stopped.
+A failed step is marked in red with the reason, so it is immediately clear where things stopped.
 
 ### How long it takes
 
@@ -139,6 +163,7 @@ Most of the time goes to the engine, not to the recording:
 | CS2 cold start | 40 to 90 seconds | Engine init, shaders, map load |
 | Seek to the first clip | depends on the tick | `demo_gototick` has to simulate every tick from the start of the demo |
 | Recording | depends on length | Runs slower than real time |
+| Writing the takes | a few seconds | HLAE feeds ffmpeg through a pipe, which keeps encoding after the last frame |
 
 The seek is the least obvious cost: a moment from round one starts almost right away, a moment from round eight means fast forwarding through a quarter of an hour of play.
 
@@ -191,6 +216,57 @@ Landing spots are named from the game's own callouts, not from a hand written ta
 
 The benefit is that this works on every map, including workshop ones, with no per map data to maintain. When no sample lies within 600 units the spot is reported as `unknown`.
 
+### Throws that share a moment
+
+Two smokes a second apart used to produce two clips whose recording windows overlapped. The
+recorder plays the demo once and drives everything from tick callbacks, so overlapping windows
+interleave: the second clip starts recording while the first is still running, the first clip's
+stop ends the second one's take, and the zoom and the landing camera fire for the wrong grenade.
+That is why the camera looked like it could not decide what to film.
+
+Throws whose windows overlap are now filmed as one clip. One lead in, one zoom hold before the
+first throw, the whole burst filmed from the thrower, then one cut to a camera pulled back far
+enough to hold every landing in frame. When the landings are further apart than
+`maximumGroupSpread` no single shot works, so the camera follows the first throw instead.
+
+On the test demo this is not an edge case: 113 smokes became 49 clips, with 64 throws folded
+into the clip they shared. Bursts of four and five throws are common in an execute.
+
+The same rule applies to highlights, where two players can trade kills inside one firefight.
+Those merge into a single clip following the higher scoring player, and the clip note says who
+else was in it.
+
+Two related guards came out of this. A clip is never pushed past its own action by the round
+clamp, which used to happen when a grenade thrown at the end of one round detonated inside the
+next and landed a clip two seconds of empty footage away from the throw. And the plan is checked
+to hold no overlapping segments at all.
+
+### Choosing the angle
+
+The landing camera used to sit on the straight line from the landing spot back to the thrower.
+That is wrong often enough to be annoying: a grenade thrown over a wall arcs over it, but the
+straight line at camera height goes through it, so the shot is a close up of a wall. Same story
+with a smoke thrown through a window, where the thrower is outside and the smoke is inside.
+
+The demo already carries the answer. `parse_grenades` gives the projectile position on every
+tick, and the grenade physically travelled that path, so the path is known to be clear. The
+recorder walks backwards along it from the resting point and takes the direction the grenade
+came in on, then places the camera that far back along that direction, looking at the landing.
+A grenade lobbed over a wall is filmed from above and behind the arc; a smoke rolled along the
+floor is filmed from along the floor.
+
+The walk stops where the path stops being straight enough, measured as the travelled distance
+against the straight line back to the landing. That keeps a bouncy tail from dragging the camera
+around a corner. A near vertical drop is not used at all, since the direction would put the
+camera in the ceiling, and a steep approach is levelled off at 55 degrees.
+
+When there is not enough clean flight the old thrower line is used, which is why both modes are
+still there. On the test demo 261 of 294 grenades of every kind got their angle from the flight,
+and where it applied the camera moved a median of 80 units from where it used to sit.
+
+This is a much better guess, not a guarantee. Nothing here reads the map geometry, so a shot can
+still be blocked. `nades.cameraMode` set to `thrower` restores the old behaviour.
+
 ### How a throw is filmed
 
 Each grenade becomes one clip built from these beats:
@@ -218,7 +294,7 @@ The split follows the same forward seek rule as highlight segmentation, so it on
 
 The zoom hold runs for real demo time rather than freezing the picture. A hard `demo_pause` stops demo ticks, and every command in the pipeline is scheduled with `mirv_cmd addAtTick`, so nothing would ever fire to unpause it and the recording would hang forever. Slowing the demo with `demo_timescale` does not help either: HLAE pins `host_framerate` while recording and advances the demo one step per rendered frame, so the timescale is ignored and the zoom flashes past in a couple of frames. Half a second of held demo time is the reliable option, and since the player is standing still lining up the throw it reads as a still frame anyway. Raise `freezeSeconds` if you want longer on the aim point.
 
-The landing camera is placed `landingDistance` units from the detonation point, on the line back towards the thrower, raised by `landingHeight`, and angled to look straight at the spot. Standing on the thrower's side means the camera sits in the open space the grenade just flew through instead of inside whatever wall is behind the smoke.
+The landing camera is placed `landingDistance` units from the detonation point, on the direction the grenade came in on, and angled to look straight at the spot. See [Choosing the angle](#choosing-the-angle) for how that direction is worked out and when it falls back to the throw line.
 
 ### `nades`
 
@@ -231,11 +307,50 @@ The landing camera is placed `landingDistance` units from the detonation point, 
 | `landingCutSeconds` | `0.5` | How long after the throw the camera cuts to the landing spot |
 | `landingLeadSeconds` | `3.0` | How much of the flight is kept before detonation when a long flight is trimmed |
 | `landingHoldSeconds` | `3.0` | How long the camera stays there after detonation |
+| `cameraMode` | `flight` | `flight` follows the line the grenade flew in on, `thrower` uses the throw line |
+| `minimumApproach` | `60.0` | How much clean flight is needed before that direction is trusted |
+| `maximumGroupSpread` | `600.0` | How far apart landings can be and still share one shot |
 | `landingDistance` | `220.0` | Camera distance from the detonation point |
-| `landingHeight` | `90.0` | How far the camera is raised |
+| `landingHeight` | `90.0` | How far the camera is raised, `thrower` mode only |
 | `calloutSampleStride` | `64` | Tick spacing when sampling callouts, lower is more accurate and slower |
 
 ---
+
+## Updating
+
+```bash
+HighlighterCS2.exe -update
+```
+
+It reads the latest release of [this repository](https://github.com/Sevelinish/CS2Prak-HighlightMaker),
+compares the tag with the version you are running, and stops there if you are already current.
+If there is something newer it prints the version, the size and the release notes, downloads the
+zip and installs it.
+
+A program cannot overwrite itself while it is running, so the install happens in two parts. The
+zip is unpacked into `work/update/staged` and checked for `HighlighterCS2.exe` and `_internal`,
+so a wrong or truncated download is rejected before anything is touched. Then an installer
+script is started detached, the program exits, and the script waits for the process to be gone
+before replacing the files. The next start says which version was installed.
+
+**What is replaced:** `HighlighterCS2.exe`, `_internal`, `README.md` and `docs`.
+
+**What is kept:** `config.json`, the output folder, `demos`, `tools`, `work` and `logs`. Your
+clips, your demos, the downloaded HLAE and ffmpeg, and every setting you changed stay exactly
+as they were.
+
+If the old process somehow never exits, the installer gives up and changes nothing rather than
+replacing files under a running program. Either way `logs/update.log` says what happened.
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `update.releaseApiUrl` | the repository releases feed | Where to look for a newer version |
+| `update.assetPattern` | `*.zip` | Which release file holds the program |
+| `update.checkOnStart` | `false` | Reserved for a launcher that wants a check on every run |
+| `update.relaunchAfterInstall` | `false` | Start the new version once it is installed |
+| `update.timeoutSeconds` | `600` | Network timeout for the download |
+
+Running from source there is nothing to replace, so `-update` says so and points at `git pull`.
 
 ## Plugin API
 
@@ -258,13 +373,96 @@ rather own the process and talk over a pipe.
 | `highlights.find`, `grenades.find` | The tables the user picks from, with stable identifiers |
 | `plan.preview` | What will be recorded, before the game launches |
 | `jobs.*` | Queue a recording, follow its stages, cancel it, collect the files |
+| `session.*` | The game kept open between jobs, and closing it |
+| `update.*` | Check for a newer release and install it |
 | `config.*` | Read, describe and patch every setting |
 | `output.*` | The videos already written |
 
 Recording is asynchronous. `jobs.submit` returns a job id immediately, and the job publishes
-events through eight stages until the files are on disk.
+events through eight stages until the files are on disk. Passing `keepGameOpen` on a job leaves
+CS2 running so the next job skips the startup.
 
 The full command reference is in [docs/API.md](docs/API.md).
+
+## Keeping the game open
+
+Starting Counter-Strike 2 takes 60 to 120 seconds, and on a short batch that is most of the
+wait. The `-exit0` flag leaves the game running when the recording is done, so the next batch
+goes straight to recording.
+
+```bash
+HighlighterCS2.exe match.dem -p s1mple -exit0
+```
+
+When the last clip finishes the game does not quit. The demo is closed with `disconnect` and
+Counter-Strike 2 goes back to its main menu, so nothing is left playing on screen.
+
+Reusing a game means sending it console commands after that, and the game is launched with a
+console port on loopback for exactly this. The port is opened only when the game is being kept
+open, only for the lifetime of that game, and it carries a password generated for that launch.
+Run the program again and it finds the running game through a marker in
+`work/warm_session.json`, writes the new scripts, and sends `exec highlighter_session` followed
+by `playdemo` down that port. That is the same order a cold launch uses, so the demo starts at
+tick zero and the schedule fires normally. Any demo can be handed over this way, not only the
+one that was recorded before.
+
+The port is probed right after the game starts. If this build of CS2 does not open one, the
+program falls back to the older approach for that session: the demo stays loaded, rewinds to
+the start, and a listener made of `mirv_cmd addAtTick` entries polls for a cfg the next run
+drops in. It works, but the demo keeps playing in the background. Set
+`recording.handoverChannel` to `demo` to choose that on purpose, or to avoid opening a port.
+
+A fresh game is launched anyway, without failing anything, when the resolution or window mode
+changed, when the warm window has run out, or when the running game does not answer. In that
+case the stale game is closed first, since a second CS2 cannot start alongside it.
+
+Recording is finished when the take files are complete, not when the game exits. The wait only
+starts counting once the first frames are written, so the two minutes CS2 spends loading do not
+count against it. See [Why saving used to be slow](#why-saving-used-to-be-slow).
+
+The program prints how long the session stays usable when it finishes. Close the game yourself
+when you are done.
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `recording.keepGameOpen` | `false` | Same as passing `-exit0` every time |
+| `recording.handoverChannel` | `netcon` | `netcon` closes the demo, `demo` leaves it playing |
+| `recording.handoverIntervalSeconds` | `1.0` | How often the running game looks for a new script, `demo` channel only |
+| `recording.handoverTimeoutSeconds` | `120.0` | How long to wait for the running game to produce |
+| `game.netconPort` | `0` | Console port for a kept open game, `0` picks a free one |
+| `recording.takeSettleSeconds` | `2.0` | How long a take must stop growing before it counts as done |
+| `recording.takeStallSeconds` | `120.0` | How long to wait on a recording that stopped producing |
+
+Recording rewrites the CS2 video settings and puts them back when the game closes. While the
+game is kept open that restore is deferred to the next cold launch, and the backups stay next
+to the originals with a `.highlighter-backup` suffix.
+
+## Why saving used to be slow
+
+HLAE does not write the video itself. It pipes raw frames to `ffmpeg.exe` child processes, one
+per stream. `mirv_streams record end` only closes that pipe: ffmpeg still has to encode
+whatever is queued and then write the mp4 index, which lands at the end of the file.
+
+The old code told the game to `quit` on the same line as `mirv_streams record end`, and treated
+`cs2.exe` disappearing as the end of the recording. On Windows the ffmpeg children outlive their
+parent, so saving started on top of encoders that were still running: the assembler read files
+that were still growing and competed with them for the disk. With `-exit0` the game never
+quits, so the program waited for the take files to stop changing instead, which is the correct
+signal, and saving was instant. Same work, different waiting.
+
+Both modes now use the correct signal:
+
+- Recording is finished when every segment has a video file and the total size has stopped
+  changing for `takeSettleSeconds`. If the game disappears first, the takes are given time to
+  finish writing rather than being read mid-flight.
+- The `quit` is no longer glued to the end of the recording. It is scheduled a few seconds of
+  demo time later, so HLAE gets to close its streams cleanly, and the program closes the game
+  itself if that never happens.
+- Only then does the assembler run, over files nothing else is touching.
+
+The total wall clock is about the same, since the encoders have to finish either way. What
+changes is that the waiting now happens in the recording stage where it belongs, saving is
+quick, and no clip is ever assembled from a half written take.
 
 ## Clip segmentation
 
@@ -333,9 +531,15 @@ The `logs/highlighter.log` file always receives everything down to `DEBUG`, what
 | `seekLeadTicks` | `128` | How many ticks before a segment the seek lands |
 | `playbackSpeed` | `1.0` | `host_timescale` while recording |
 | `skipDeadTime` | `true` | Seek past the empty stretches |
-| `closeGameWhenDone` | `true` | Close CS2 after the last clip |
+| `closeGameWhenDone` | `true` | Close CS2 after the last clip, ignored when `keepGameOpen` is on |
 | `openOutputFolder` | `true` | Open the clip folder when finished |
 | `singleFile` | `false` | Join every clip into one video, same as `-one-file` |
+| `keepGameOpen` | `false` | Leave CS2 running for the next batch, same as `-exit0` |
+| `handoverChannel` | `netcon` | `netcon` closes the demo, `demo` leaves it playing |
+| `handoverIntervalSeconds` | `1.0` | How often the running game looks for a new script |
+| `handoverTimeoutSeconds` | `120.0` | How long to wait for the running game to produce |
+| `takeSettleSeconds` | `2.0` | How long a take must stop growing before it counts as done |
+| `takeStallSeconds` | `120.0` | How long to wait on a recording that stopped producing |
 
 ### `encoding`
 
@@ -406,6 +610,7 @@ Want more clips, drop `minimumScore` to 6. Want only aces and clutches, raise it
 | `tickRate` | `64` | Demo tick rate |
 | `launchArguments` | `-steam -insecure -afxDisableSteamStorage -novid -console` | CS2 arguments |
 | `hookDllRelativePath` | `x64/AfxHookSource2.dll` | Which HLAE library to inject |
+| `netconPort` | `0` | Console port for a kept open game, `0` picks a free one |
 | `steamEnvironment` | `SteamAppId` and friends | Environment variables, without them CS2 will not reach Steam |
 | `consoleVariables` | see config | Cvars set before recording |
 | `gameStartupTimeoutSeconds` | `300` | How long to wait for `cs2.exe` to appear after injection |
@@ -428,6 +633,16 @@ The `consoleVariables` and `steamEnvironment` maps **merge** with the defaults r
 | `downloadTimeoutSeconds` | `600` | Download timeout |
 
 The HLAE install is checked for integrity before every run. If `AfxHook.dat`, `injector.exe` or the hook library went missing (an interrupted download, antivirus, a bad extraction), the folder is wiped and HLAE is reinstalled, instead of throwing a cryptic `AfxError #1002`.
+
+### `update`
+
+| Key | Default | What it does |
+| --- | --- | --- |
+| `releaseApiUrl` | the repository releases feed | Where `-update` looks for a newer version |
+| `assetPattern` | `*.zip` | Which release file holds the program |
+| `checkOnStart` | `false` | Reserved for a launcher that wants a check on every run |
+| `relaunchAfterInstall` | `false` | Start the new version once it is installed |
+| `timeoutSeconds` | `600` | Network timeout for the download |
 
 ## Under the hood
 
@@ -550,6 +765,12 @@ The `is_warmup_period` field the parser exposes came back as `False` in every CS
 src/highlighter/
 ├── application.py       the whole scenario
 ├── cli.py               command line parsing
+├── version.py           the version everything reports and compares against
+├── update/              checking GitHub and installing a newer release
+│   ├── checker.py       what the newest release is
+│   ├── payload.py       downloading, unpacking and verifying it
+│   ├── swap.py          the installer script that runs after we exit
+│   └── installer.py  service.py  command.py
 ├── api/                 the plugin API built for CS2Prak-Launcher
 │   ├── contract.py      protocol version, command and capability catalogue
 │   ├── service.py       the command implementations
@@ -562,7 +783,9 @@ src/highlighter/
 │   └── schema.py  repository.py  migrations.py
 ├── domain/              the domain model
 │   ├── kill.py  round.py  match.py  player.py  team.py  weapon.py
-│   └── highlight.py
+│   ├── flight.py        the path a grenade actually flew
+│   ├── camera.py        picking the angle the landing is filmed from
+│   └── highlight.py  grenade.py  geometry.py
 ├── demo/                reading .dem
 │   ├── reader.py        demoparser2 into Match
 │   ├── timeline.py      cutting off the warmup
@@ -574,6 +797,8 @@ src/highlighter/
 │   └── models.py  builder.py  segmenter.py  writer.py
 ├── recording/           everything HLAE related
 │   ├── mirv_script.py   cfg generation
+│   ├── warm_session.py  the game kept open between recordings
+│   ├── take_watcher.py  knowing a recording finished without the game exiting
 │   └── script_writer.py graphics.py  launcher.py  game_process.py  session.py
 ├── media/               assembling the final mp4
 │   └── assembler.py  concat.py  reel.py  encoders.py  crosshair.py  output_library.py
@@ -582,7 +807,10 @@ src/highlighter/
 ├── game/                locating Steam and CS2
 │   └── steam.py  installation.py
 └── presentation/        the console
-    └── highlight_table.py  selector.py  selection_parser.py  demo_picker.py  steps.py
+    ├── banner.py        the header
+    ├── steps.py         the numbered steps and their timings
+    ├── summary.py       the table of what was written
+    └── highlight_table.py  grenade_table.py  selector.py  selection_parser.py  demo_picker.py
 ```
 
 To add your own detection rule: subclass `HighlightRule`, set `name`, add the class to `AVAILABLE_RULES` in `detection/registry.py` and a weight to `tagWeights`.

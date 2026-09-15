@@ -71,8 +71,9 @@ def test_plan_serialises_to_json_friendly_mapping(match, terrorists, counter_ter
     plan = build_plan(match, terrorists, counter_terrorists)
     payload = plan.to_mapping()
 
-    assert payload["version"] == 3
+    assert payload["version"] == 4
     assert payload["demo"]["map"] == "de_mirage"
+    assert payload["demo"]["endTick"] > 0
     assert payload["recording"]["fps"] == 60
     assert isinstance(payload["clips"][0]["player"]["steamId64"], str)
     assert payload["clips"][0]["tags"] == ["kills_3"]

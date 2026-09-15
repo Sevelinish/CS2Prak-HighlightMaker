@@ -77,6 +77,22 @@ class GraphicsProfile:
                 backup.unlink(missing_ok=True)
         self._modified.clear()
 
+    def restore_pending(self) -> int:
+        if not self._game.restore_graphics_on_exit:
+            return 0
+
+        restored = 0
+        for settings_file in self._installation.video_settings_files():
+            backup = self._backup_path(settings_file)
+            if not backup.is_file():
+                continue
+            settings_file.write_bytes(backup.read_bytes())
+            backup.unlink(missing_ok=True)
+            restored += 1
+        if restored:
+            self._logger.info("Restored %d video settings file(s) from a previous run", restored)
+        return restored
+
     def _backup(self, settings_file: Path) -> None:
         backup = self._backup_path(settings_file)
         if not backup.exists():

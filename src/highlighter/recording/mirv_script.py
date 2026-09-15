@@ -9,6 +9,13 @@ from ..plan.models import CameraBeat, ClipSegment, ClipSpec, RecordingPlan
 
 SESSION_SCRIPT_NAME = "highlighter_session"
 SEEK_SCRIPT_NAME = "highlighter_seek"
+LISTEN_SCRIPT_NAME = "highlighter_listen"
+FINISH_SCRIPT_NAME = "highlighter_finish"
+HANDOVER_SCRIPT_NAME = "highlighter_handover"
+LISTEN_START_DELAY_SECONDS = 5.0
+MAXIMUM_LISTEN_ENTRIES = 4000
+FALLBACK_LISTEN_SECONDS = 600.0
+QUIT_DELAY_SECONDS = 3.0
 STREAM_SETTINGS_NAME = "highlighterFfmpeg"
 VIDEO_FILE_STEM = "video"
 CLEAN_STREAM_NAME = "highlighterClean"
@@ -39,6 +46,12 @@ class ScriptFile:
 class ScriptBundle:
     files: tuple[ScriptFile, ...]
     entry_script: str
+    handover_script: str = ""
+    listen_script: str = ""
+
+    @property
+    def hands_over(self) -> bool:
+        return bool(self.handover_script)
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,24 +91,40 @@ class MirvScriptBuilder:
         self._game = game
         self._take_directory = take_directory
 
-    def build(self, plan: RecordingPlan) -> ScriptBundle:
+    def build(self, plan: RecordingPlan, handover: bool = False) -> ScriptBundle:
         schedule = self._flatten(plan)
         files = [ScriptFile(SESSION_SCRIPT_NAME, self._session_script(plan, schedule))]
 
         if schedule:
             files.append(ScriptFile(SEEK_SCRIPT_NAME, self._seek_script(schedule[0])))
 
+        if self._recording.keep_game_open:
+            files.append(ScriptFile(LISTEN_SCRIPT_NAME, self._listen_script(plan)))
+            files.append(ScriptFile(FINISH_SCRIPT_NAME, self.park_script()))
+
         for position, entry in enumerate(schedule):
             following = schedule[position + 1] if position + 1 < len(schedule) else None
             files.append(ScriptFile(entry.start_script_name, self._start_script(entry)))
-            files.append(ScriptFile(entry.end_script_name, self._end_script(entry, following)))
+            files.append(
+                ScriptFile(entry.end_script_name, self._end_script(plan, entry, following))
+            )
 
         for beat in self._beats(plan):
             files.append(
                 ScriptFile(beat.script_name, self._join(list(beat.beat.commands)))
             )
 
-        return ScriptBundle(files=tuple(files), entry_script=SESSION_SCRIPT_NAME)
+        if handover and schedule:
+            files.append(
+                ScriptFile(HANDOVER_SCRIPT_NAME, self._handover_script(schedule[0]))
+            )
+
+        return ScriptBundle(
+            files=tuple(files),
+            entry_script=SESSION_SCRIPT_NAME,
+            handover_script=HANDOVER_SCRIPT_NAME if handover and schedule else "",
+            listen_script=LISTEN_SCRIPT_NAME if self._recording.keep_game_open else "",
+        )
 
     @staticmethod
     def _beats(plan: RecordingPlan) -> list[ScheduledBeat]:
@@ -188,14 +217,70 @@ class MirvScriptBuilder:
             f"spec_mode {self._spectator_mode()}",
         ]
 
-    def _end_script(self, entry: ScheduledSegment, following: ScheduledSegment | None) -> str:
+    def _end_script(
+        self,
+        plan: RecordingPlan,
+        entry: ScheduledSegment,
+        following: ScheduledSegment | None,
+    ) -> str:
         lines = ["mirv_streams record end"]
         if following is not None:
             if self._recording.skip_dead_time:
                 lines.append(self._forward_seek(entry.segment.end_tick, following))
-        elif self._recording.close_game_when_done:
-            lines.append("quit")
-        return self._join(lines)
+            return self._join(lines)
+        return self._join(lines + self._finale(plan, entry))
+
+    def _finale(self, plan: RecordingPlan, entry: ScheduledSegment) -> list[str]:
+        if self._recording.keep_game_open:
+            return [f"exec {FINISH_SCRIPT_NAME}"]
+        if self._recording.close_game_when_done:
+            quit_tick = entry.segment.end_tick + self._ticks(plan, QUIT_DELAY_SECONDS)
+            return [f"mirv_cmd addAtTick {quit_tick} quit"]
+        return []
+
+    @classmethod
+    def park_script(cls) -> str:
+        return cls._join(
+            [
+                "mirv_cmd clear",
+                f"exec {LISTEN_SCRIPT_NAME}",
+                f"demo_gototick {BOOTSTRAP_TICK}",
+            ]
+        )
+
+    @classmethod
+    def disconnect_script(cls) -> str:
+        return cls._join(["mirv_cmd clear", "disconnect"])
+
+    def _listen_script(self, plan: RecordingPlan) -> str:
+        first = BOOTSTRAP_TICK + self._ticks(plan, LISTEN_START_DELAY_SECONDS)
+        last = self._listen_end_tick(plan)
+        step = self._listen_step(plan, first, last)
+        ticks = list(range(first, max(last, first + step), step))[:MAXIMUM_LISTEN_ENTRIES]
+        return self._join(
+            [f"mirv_cmd addAtTick {tick} exec {HANDOVER_SCRIPT_NAME}" for tick in ticks]
+        )
+
+    def _listen_step(self, plan: RecordingPlan, first: int, last: int) -> int:
+        step = max(1, self._ticks(plan, self._recording.handover_interval_seconds))
+        entries = max(1, (last - first) // step)
+        if entries <= MAXIMUM_LISTEN_ENTRIES:
+            return step
+        return max(step, (last - first) // MAXIMUM_LISTEN_ENTRIES)
+
+    def _listen_end_tick(self, plan: RecordingPlan) -> int:
+        fallback = BOOTSTRAP_TICK + self._ticks(plan, FALLBACK_LISTEN_SECONDS)
+        return max(plan.demo_end_tick, fallback)
+
+    @staticmethod
+    def _ticks(plan: RecordingPlan, seconds: float) -> int:
+        return max(1, int(round(seconds * plan.tick_rate)))
+
+    def _handover_script(self, first: ScheduledSegment) -> str:
+        destination = max(0, first.segment.start_tick - self._recording.seek_lead_ticks)
+        return self._join(
+            [f"exec {SESSION_SCRIPT_NAME}", f"demo_gototick {destination}"]
+        )
 
     def _forward_seek(self, current_tick: int, target: ScheduledSegment) -> str:
         destination = max(0, target.segment.start_tick - self._recording.seek_lead_ticks)

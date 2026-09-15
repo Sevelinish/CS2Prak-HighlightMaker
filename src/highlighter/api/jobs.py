@@ -126,6 +126,8 @@ class JobResult:
     requested_clips: int = 0
     artifacts: list[JobArtifact] = field(default_factory=list)
     reel: JobArtifact | None = None
+    reused_game: bool = False
+    warm_session: Mapping[str, Any] | None = None
 
     def to_mapping(self) -> dict[str, Any]:
         return {
@@ -134,6 +136,8 @@ class JobResult:
             "producedClips": len(self.artifacts),
             "artifacts": [item.to_mapping() for item in self.artifacts],
             "reel": self.reel.to_mapping() if self.reel else None,
+            "reusedGame": self.reused_game,
+            "warmSession": dict(self.warm_session) if self.warm_session else None,
         }
 
 

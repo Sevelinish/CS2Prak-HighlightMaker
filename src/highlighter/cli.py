@@ -13,6 +13,8 @@ EPILOG = """examples:
   HighlighterCS2 match.dem -p -n1clxe     names starting with a dash are fine
   HighlighterCS2 match.dem -p 76561198000000000
   HighlighterCS2 match.dem -one-file      join the picked moments into one video
+  HighlighterCS2 match.dem -exit0         leave the game running for the next batch
+  HighlighterCS2 -update                  install the newest release, keeping clips and config
   HighlighterCS2 match.dem -m nades_smoke every smoke that was thrown
   HighlighterCS2 match.dem -m nades       every grenade of every kind
 
@@ -29,6 +31,8 @@ docs/API.md for the command reference.
 PLAYER_FLAGS = ("-p", "--player", "--player-name")
 CANONICAL_PLAYER_FLAG = "--player"
 ONE_FILE_FLAGS = ("-one-file", "--one-file")
+KEEP_GAME_FLAGS = ("-exit0", "--exit0", "--keep-game-open")
+UPDATE_FLAGS = ("-update", "--update")
 MODE_FLAGS = ("-m", "--mode")
 API_FLAG = "--api"
 API_TRANSPORTS = ("http", "stdio")
@@ -46,6 +50,8 @@ KNOWN_FLAGS = frozenset(
         "--api-no-events",
         *PLAYER_FLAGS,
         *ONE_FILE_FLAGS,
+        *KEEP_GAME_FLAGS,
+        *UPDATE_FLAGS,
         *MODE_FLAGS,
     }
 )
@@ -110,6 +116,18 @@ class CommandLine:
             dest="one_file",
             action="store_true",
             help="join every selected moment into a single video file",
+        )
+        parser.add_argument(
+            *KEEP_GAME_FLAGS,
+            dest="keep_game_open",
+            action="store_true",
+            help="leave CS2 running so the next batch skips the startup",
+        )
+        parser.add_argument(
+            *UPDATE_FLAGS,
+            dest="update",
+            action="store_true",
+            help="check for a newer release, download it and install it",
         )
         CommandLine._add_api_arguments(parser)
         parser.add_argument(

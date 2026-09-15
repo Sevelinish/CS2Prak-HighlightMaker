@@ -118,9 +118,9 @@ def render_steps() -> str:
 def test_steps_are_numbered_against_the_total():
     output = render_steps()
 
-    assert "1/3 Launching Counter-Strike 2" in output
-    assert "2/3 Recording 2 clip(s)" in output
-    assert "3/3 Saving videos" in output
+    assert "1/3  Launching Counter-Strike 2" in output
+    assert "2/3  Recording 2 clip(s)" in output
+    assert "3/3  Saving videos" in output
 
 
 def test_steps_show_details_and_completion():
@@ -128,7 +128,13 @@ def test_steps_show_details_and_completion():
 
     assert "encoder h264_nvenc" in output
     assert "game is up" in output
-    assert output.count("✓") == 3
+    assert output.count("[+]") == 3
+
+
+def test_every_finished_step_reports_how_long_it_took():
+    output = render_steps()
+
+    assert output.count("0.0s") == 3
 
 
 def test_a_failing_step_is_marked():
@@ -139,7 +145,7 @@ def test_a_failing_step_is_marked():
         with reporter.step("Recording"):
             raise RuntimeError("boom")
 
-    assert "✗" in buffer.getvalue()
+    assert "[-]" in buffer.getvalue()
 
 
 def test_done_without_an_open_step_prints_nothing():
@@ -157,7 +163,11 @@ class Utf8Stream(io.StringIO):
     encoding = "utf-8"
 
 
-def test_marks_fall_back_to_ascii_on_a_legacy_console():
+class AsciiStream(io.StringIO):
+    encoding = "ascii"
+
+
+def test_outcome_marks_are_plain_text_everywhere():
     stream = LegacyStream()
     reporter = StepReporter(Console(file=stream, width=100, no_color=True), total=1)
 
@@ -165,19 +175,55 @@ def test_marks_fall_back_to_ascii_on_a_legacy_console():
     reporter.done("ok")
     output = stream.getvalue()
 
-    assert "OK" in output
-    assert "✓" not in output
+    assert "[+]" in output
     output.encode("cp866")
 
 
-def test_marks_stay_unicode_on_a_utf8_console():
+def test_the_detail_bullet_falls_back_on_an_ascii_console():
+    stream = AsciiStream()
+    reporter = StepReporter(Console(file=stream, width=100, no_color=True), total=1)
+
+    reporter.begin("Recording")
+    reporter.detail("encoder h264_nvenc")
+    output = stream.getvalue()
+
+    assert "·" not in output
+    assert "encoder h264_nvenc" in output
+    output.encode("ascii")
+
+
+def test_the_detail_bullet_survives_a_legacy_russian_console():
+    stream = LegacyStream()
+    reporter = StepReporter(Console(file=stream, width=100, no_color=True), total=1)
+
+    reporter.begin("Recording")
+    reporter.detail("encoder h264_nvenc")
+    output = stream.getvalue()
+
+    assert "·" in output
+    output.encode("cp866")
+
+
+def test_the_detail_bullet_stays_a_dot_on_a_utf8_console():
     stream = Utf8Stream()
     reporter = StepReporter(Console(file=stream, width=100, no_color=True), total=1)
 
     reporter.begin("Recording")
-    reporter.done()
+    reporter.detail("encoder h264_nvenc")
 
-    assert "✓" in stream.getvalue()
+    assert "·" in stream.getvalue()
+
+
+def test_details_and_outcomes_share_the_same_message_column():
+    buffer = io.StringIO()
+    reporter = StepReporter(Console(file=buffer, width=100, no_color=True), total=1)
+
+    reporter.begin("Recording")
+    reporter.detail("detail text")
+    reporter.done("outcome text")
+    lines = buffer.getvalue().splitlines()
+
+    assert lines[1].index("detail text") == lines[2].index("outcome text")
 
 
 def test_step_total_covers_the_optional_player_lookup():
@@ -190,3 +236,13 @@ def test_step_total_covers_the_optional_player_lookup():
 
     assert without._total_steps() == BASE_STEPS
     assert with_player._total_steps() == BASE_STEPS + 1
+
+
+def test_durations_read_naturally():
+    from highlighter.presentation.steps import Duration
+
+    assert Duration.render(0.84) == "0.8s"
+    assert Duration.render(9.9) == "9.9s"
+    assert Duration.render(42.4) == "42s"
+    assert Duration.render(125.0) == "2m 05s"
+    assert Duration.render(3600.0) == "60m 00s"

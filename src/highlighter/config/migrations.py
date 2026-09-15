@@ -218,6 +218,84 @@ class NadeTimingMigration(ConfigMigration):
         nades.update(self.TIMINGS)
 
 
+class WarmGameSessionMigration(ConfigMigration):
+    version = 10
+    reason = (
+        "the game can now be left running between recordings, so the next batch is "
+        "handed to it through a cfg instead of paying the CS2 startup again"
+    )
+    SETTINGS = {
+        "keepGameOpen": False,
+        "handoverIntervalSeconds": 1.0,
+        "handoverTimeoutSeconds": 120.0,
+        "takeSettleSeconds": 2.0,
+        "takeStallSeconds": 120.0,
+    }
+
+    def apply(self, raw: dict[str, Any]) -> None:
+        recording = raw.setdefault("recording", {})
+        for key, value in self.SETTINGS.items():
+            recording.setdefault(key, value)
+
+
+class DemoHandoverChannelMigration(ConfigMigration):
+    version = 11
+    reason = (
+        "a kept open game now closes the demo and goes back to the main menu, and the "
+        "next batch is handed to it over the game console instead of a demo tick"
+    )
+
+    def apply(self, raw: dict[str, Any]) -> None:
+        recording = raw.setdefault("recording", {})
+        recording["handoverChannel"] = "netcon"
+        recording["handoverTimeoutSeconds"] = 120.0
+        raw.setdefault("game", {}).setdefault("netconPort", 0)
+
+
+class SelfUpdateMigration(ConfigMigration):
+    version = 12
+    reason = "the app can now check GitHub for a new release and install it itself"
+    SETTINGS = {
+        "releaseApiUrl": (
+            "https://api.github.com/repos/Sevelinish/CS2Prak-HighlightMaker/releases/latest"
+        ),
+        "assetPattern": "*.zip",
+        "checkOnStart": False,
+        "relaunchAfterInstall": False,
+        "timeoutSeconds": 600,
+    }
+
+    def apply(self, raw: dict[str, Any]) -> None:
+        update = raw.setdefault("update", {})
+        for key, value in self.SETTINGS.items():
+            update.setdefault(key, value)
+
+
+class FlightCameraMigration(ConfigMigration):
+    version = 13
+    reason = (
+        "the landing camera now follows the line the grenade actually flew in on, "
+        "so it no longer ends up behind the wall the grenade was thrown over"
+    )
+    SETTINGS = {"cameraMode": "flight", "minimumApproach": 60.0}
+
+    def apply(self, raw: dict[str, Any]) -> None:
+        nades = raw.setdefault("nades", {})
+        for key, value in self.SETTINGS.items():
+            nades[key] = value
+
+
+class GroupedThrowMigration(ConfigMigration):
+    version = 14
+    reason = (
+        "throws that share a stretch of the demo are filmed as one clip now, so the "
+        "recordings no longer cut each other short"
+    )
+
+    def apply(self, raw: dict[str, Any]) -> None:
+        raw.setdefault("nades", {}).setdefault("maximumGroupSpread", 600.0)
+
+
 MIGRATIONS: tuple[ConfigMigration, ...] = (
     Cs2CustomLoaderMigration(),
     Cs2ClipQualityMigration(),
@@ -227,6 +305,11 @@ MIGRATIONS: tuple[ConfigMigration, ...] = (
     GameCrosshairMigration(),
     KillfeedMigration(),
     NadeTimingMigration(),
+    WarmGameSessionMigration(),
+    DemoHandoverChannelMigration(),
+    SelfUpdateMigration(),
+    FlightCameraMigration(),
+    GroupedThrowMigration(),
 )
 CURRENT_VERSION = max((migration.version for migration in MIGRATIONS), default=INITIAL_VERSION)
 

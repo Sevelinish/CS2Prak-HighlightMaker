@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from demoparser2 import DemoParser
 
+from ..domain.flight import (
+    MAXIMUM_SAMPLES,
+    RESTING_TOLERANCE,
+    FlightPoint,
+    GrenadeFlight,
+)
 from ..domain.geometry import Vector3, ViewAngles
 from ..domain.grenade import Grenade, GrenadeKind
 from ..domain.match import Match
@@ -17,7 +25,20 @@ from .timeline import MatchStartResolver
 PROJECTILE_COLUMN = "grenade_type"
 ENTITY_COLUMN = "grenade_entity_id"
 ANGLE_PROPERTIES = ["X", "Y", "Z", "pitch", "yaw"]
+POSITION_COLUMNS = ["x", "y", "z"]
+TICK_COLUMN = "tick"
+FLIGHT_GAP_TICKS = 64
 CALLOUT_SAMPLE_STRIDE = 64
+
+
+@dataclass(frozen=True, slots=True)
+class TrackedFlight:
+    first_tick: int
+    last_tick: int
+    path: GrenadeFlight
+
+    def covers(self, tick: int) -> bool:
+        return self.first_tick <= tick <= self.last_tick + FLIGHT_GAP_TICKS
 
 
 class GrenadeReader:
@@ -37,8 +58,8 @@ class GrenadeReader:
             detonations = self._read_detonations(parser, kinds, match_start)
             if not detonations:
                 return []
-            throws = self._read_throw_ticks(parser, kinds)
-            grenades = self._build(parser, detonations, throws)
+            flights = self._read_flights(parser, kinds)
+            grenades = self._build(parser, detonations, flights)
         except (KeyboardInterrupt, SystemExit):
             raise
         except DemoParsingError:
@@ -79,9 +100,9 @@ class GrenadeReader:
                 collected.append(record)
         return collected
 
-    def _read_throw_ticks(
+    def _read_flights(
         self, parser: DemoParser, kinds: tuple[GrenadeKind, ...]
-    ) -> dict[int, int]:
+    ) -> dict[int, tuple[int, GrenadeFlight]]:
         try:
             trajectories = parser.parse_grenades()
         except (KeyboardInterrupt, SystemExit):
@@ -99,25 +120,87 @@ class GrenadeReader:
         ]
         if flying.empty:
             return {}
-        return flying.groupby(ENTITY_COLUMN)["tick"].min().astype(int).to_dict()
+
+        flights: dict[int, list[TrackedFlight]] = {}
+        for entity, frame in flying.groupby(ENTITY_COLUMN):
+            ordered = frame.sort_values(TICK_COLUMN)
+            ticks = ordered[TICK_COLUMN].to_numpy(dtype=np.int64)
+            positions = ordered[POSITION_COLUMNS].to_numpy(dtype=float)
+            flights[int(entity)] = self._split(ticks, positions)
+
+        counted = sum(len(tracked) for tracked in flights.values())
+        self._logger.debug(
+            "Read %d grenade flight(s) across %d entity id(s)", counted, len(flights)
+        )
+        return flights
+
+    def _split(self, ticks: np.ndarray, positions: np.ndarray) -> list[TrackedFlight]:
+        boundaries = np.flatnonzero(np.diff(ticks) > FLIGHT_GAP_TICKS) + 1
+        tracked: list[TrackedFlight] = []
+        for start, end in zip(
+            [0, *boundaries.tolist()], [*boundaries.tolist(), len(ticks)]
+        ):
+            if end - start < 2:
+                continue
+            tracked.append(
+                TrackedFlight(
+                    first_tick=int(ticks[start]),
+                    last_tick=int(ticks[end - 1]),
+                    path=self._as_flight(ticks[start:end], positions[start:end]),
+                )
+            )
+        return tracked
+
+    @staticmethod
+    def _flight_for(tracked: list[TrackedFlight], tick: int) -> TrackedFlight | None:
+        covering = [flight for flight in tracked if flight.covers(tick)]
+        if covering:
+            return min(covering, key=lambda flight: tick - flight.first_tick)
+        earlier = [flight for flight in tracked if flight.first_tick <= tick]
+        return max(earlier, key=lambda flight: flight.first_tick) if earlier else None
+
+    @staticmethod
+    def _as_flight(ticks: np.ndarray, positions: np.ndarray) -> GrenadeFlight:
+        if len(positions) < 2:
+            return GrenadeFlight()
+
+        drift = np.abs(positions - positions[-1]).sum(axis=1)
+        moved = np.flatnonzero(drift > RESTING_TOLERANCE)
+        end = int(moved[-1]) + 2 if moved.size else len(positions)
+        start = max(0, min(end, len(positions)) - MAXIMUM_SAMPLES)
+        return GrenadeFlight.of(
+            [
+                FlightPoint(
+                    tick=int(ticks[index]),
+                    position=Vector3(*(float(value) for value in positions[index])),
+                )
+                for index in range(start, min(end, len(positions)))
+            ]
+        )
 
     def _build(
-        self, parser: DemoParser, detonations: list[dict], throws: dict[int, int]
+        self,
+        parser: DemoParser,
+        detonations: list[dict],
+        flights: dict[int, list[TrackedFlight]],
     ) -> list[Grenade]:
-        resolved: list[tuple[dict, int]] = []
+        resolved: list[tuple[dict, int, GrenadeFlight]] = []
         for record in detonations:
             entity = record.get("entityid")
             if pd.isna(entity):
                 continue
-            throw_tick = throws.get(int(entity))
-            if throw_tick is None:
+            tracked = flights.get(int(entity))
+            if not tracked:
                 continue
-            resolved.append((record, throw_tick))
+            flight = self._flight_for(tracked, int(record["tick"]))
+            if flight is None:
+                continue
+            resolved.append((record, flight.first_tick, flight.path))
 
-        states = self._read_thrower_states(parser, {tick for _, tick in resolved})
+        states = self._read_thrower_states(parser, {tick for _, tick, _ in resolved})
         grenades: list[Grenade] = []
 
-        for record, throw_tick in resolved:
+        for record, throw_tick, flight in resolved:
             thrower = self._as_player(record.get("user_steamid"), record.get("user_name"))
             if thrower is None:
                 continue
@@ -141,6 +224,7 @@ class GrenadeReader:
                         float(record["x"]), float(record["y"]), float(record["z"])
                     ),
                     round_time_seconds=self._round_time(round_number, throw_tick),
+                    flight=flight,
                 )
             )
         return grenades

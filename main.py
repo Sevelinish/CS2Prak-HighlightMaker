@@ -8,10 +8,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 from highlighter.api.runtime import ApiOptions, ApiRuntime
 from highlighter.application import Application
 from highlighter.cli import CommandLine
+from highlighter.update.command import UpdateCommand
 
 
 def main() -> int:
     arguments = CommandLine.parse(sys.argv[1:])
+    if arguments.update:
+        return UpdateCommand(verbose=arguments.verbose).run()
+
     if arguments.api:
         return ApiRuntime(
             ApiOptions(
@@ -30,6 +34,7 @@ def main() -> int:
         player_query=arguments.player,
         mode_token=arguments.mode,
         one_file=arguments.one_file,
+        keep_game_open=arguments.keep_game_open,
         verbose=arguments.verbose,
     ).run()
 

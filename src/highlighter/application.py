@@ -28,16 +28,19 @@ from .plan.builder import RecordingPlanBuilder
 from .plan.nade_builder import NadePlanBuilder
 from .plan.models import RecordingPlan
 from .plan.writer import RecordingPlanWriter
+from .presentation.banner import Banner
 from .presentation.demo_picker import DemoPicker
 from .presentation.grenade_table import GrenadeTable
 from .presentation.highlight_table import HighlightTable
 from .presentation.selector import HighlightSelector
 from .presentation.steps import StepReporter
+from .presentation.summary import RunSummary
 from .presentation.theme import build_console
 from .provisioning.toolchain import ToolchainProvisioner
 from .recording.session import RecordingSession
+from .recording.warm_session import WarmSession
+from .update.service import UpdateService
 
-BANNER = "[brand]HighlighterCS2[/brand] [muted]CS2 demo highlight recorder[/muted]"
 BASE_STEPS = 7
 PLAYER_LOOKUP_STEP = 1
 EXIT_SUCCESS = 0
@@ -51,6 +54,7 @@ class Application:
         player_query: str | None = None,
         mode_token: str | None = None,
         one_file: bool = False,
+        keep_game_open: bool = False,
         verbose: bool = False,
     ) -> None:
         self._paths = ApplicationPaths.discover()
@@ -59,15 +63,27 @@ class Application:
         self._player_query = player_query
         self._mode = RunMode.parse(mode_token)
         self._one_file = one_file
+        self._keep_game_open = keep_game_open
         self._verbose = verbose
         self._logger = LoggingConfigurator(self._paths.logs, verbose).configure()
+        self._warm_session: WarmSession | None = None
 
     def run(self) -> int:
-        self._console.print(Panel(BANNER, border_style="muted", expand=False))
+        self._console.print(Banner.build())
         try:
             return self._execute()
         except HighlighterError as error:
-            self._console.print(f"[danger]{error}[/danger]")
+            self._console.print()
+            self._console.print(
+                Panel(
+                    f"[danger]{error}[/danger]",
+                    title="[danger]Stopped[/danger]",
+                    title_align="left",
+                    border_style="danger",
+                    padding=(0, 2),
+                    expand=False,
+                )
+            )
             self._logger.debug("Aborted", exc_info=True)
             return EXIT_FAILURE
         except KeyboardInterrupt:
@@ -78,8 +94,11 @@ class Application:
         repository = ConfigRepository(self._paths.config_file)
         config = repository.load()
         self._apply_debug_setting(config)
+        UpdateService(self._console, self._paths, config).announce_installed()
         if self._one_file:
             config.recording.single_file = True
+        if self._keep_game_open:
+            config.recording.keep_game_open = True
         if repository.migrated:
             self._console.print(
                 f"[muted]config.json upgraded to version {CONFIG_VERSION}[/muted]"
@@ -199,6 +218,7 @@ class Application:
         plan = NadePlanBuilder(config.recording, config.nades).build(
             match, selected, output_root
         )
+        self._report_merges(reporter, plan, "throws")
         work_directory = self._paths.resolve(config.paths.work_directory)
         plan_file = RecordingPlanWriter(work_directory / "plans").write(plan)
         reporter.detail(str(plan_file))
@@ -286,6 +306,7 @@ class Application:
         reporter.begin("Planning clips")
         output_root = self._paths.resolve(config.paths.output_directory)
         plan = RecordingPlanBuilder(config.recording).build(match, selected, output_root)
+        self._report_merges(reporter, plan, "moments")
 
         work_directory = self._paths.resolve(config.paths.work_directory)
         plan_file = RecordingPlanWriter(work_directory / "plans").write(plan)
@@ -296,6 +317,14 @@ class Application:
             f"{plan.total_seconds:.0f}s of footage"
         )
         return plan
+
+    @staticmethod
+    def _report_merges(reporter: StepReporter, plan: RecordingPlan, label: str) -> None:
+        if plan.merged_sources <= 0:
+            return
+        reporter.detail(
+            f"{plan.merged_sources} overlapping {label} folded into the clip they share"
+        )
 
     def _record(
         self,
@@ -322,6 +351,7 @@ class Application:
             output_root=self._paths.resolve(config.paths.output_directory),
         )
         assembled = session.execute(plan, reporter)
+        self._warm_session = session.warm_session
         return assembled, session.reel
 
     def _open_folder(
@@ -346,30 +376,4 @@ class Application:
         plan: RecordingPlan,
         reel: Reel | None = None,
     ) -> None:
-        if not assembled:
-            self._console.print(
-                "\n[danger]No clips were produced. "
-                "Check logs/highlighter.log for details.[/danger]"
-            )
-            return
-
-        self._console.print()
-        for clip in assembled:
-            segments = (
-                f" [muted]{clip.segment_count} segments[/muted]"
-                if clip.segment_count > 1
-                else ""
-            )
-            audio = "" if clip.has_audio else " [muted](no audio)[/muted]"
-            self._console.print(f"  [success]OK[/success] {clip.output.name}{segments}{audio}")
-
-        if reel is not None:
-            self._console.print(
-                f"\n[success]Joined into[/success] {reel.output.name} "
-                f"[muted]({reel.clip_count} clips, {reel.duration_seconds:.0f}s)[/muted]"
-            )
-
-        self._console.print(
-            f"\n[success]{len(assembled)}/{plan.clip_count} clips saved to[/success] "
-            f"{plan.output_directory / plan.demo_name}"
-        )
+        RunSummary(self._console).render(assembled, plan, reel, self._warm_session)

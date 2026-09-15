@@ -4,11 +4,12 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..domain.grenade import GrenadeKind
+from ..version import __version__
 
 PROTOCOL_VERSION = "1.0"
 PLUGIN_ID = "highlightercs2"
 PLUGIN_NAME = "HighlighterCS2"
-PLUGIN_VERSION = "1.0.0"
+PLUGIN_VERSION = __version__
 PLUGIN_KIND = "demo-recorder"
 HOST_APPLICATION = "CS2Prak-Launcher"
 HOST_REPOSITORY = "https://github.com/Sevelinish/CS2Prak-Launcher"
@@ -128,7 +129,15 @@ COMMANDS: tuple[CommandDescriptor, ...] = (
     CommandDescriptor(
         name="jobs.submit",
         summary="Queue a recording job for a selection and return its identifier immediately",
-        payload=("demo", "source", "selection", "overrides", "label", "validate"),
+        payload=(
+            "demo",
+            "source",
+            "selection",
+            "overrides",
+            "label",
+            "validate",
+            "keepGameOpen",
+        ),
         returns="JobDocument",
         long_running=True,
     ),
@@ -161,6 +170,27 @@ COMMANDS: tuple[CommandDescriptor, ...] = (
         summary="Return the produced files of a finished job",
         payload=("jobId",),
         returns="JobResult",
+    ),
+    CommandDescriptor(
+        name="session.get",
+        summary="Report the Counter-Strike 2 process left running for the next recording",
+        returns="WarmSession",
+    ),
+    CommandDescriptor(
+        name="session.release",
+        summary="Close the game left running and put the video settings back",
+        returns="ReleaseResult",
+    ),
+    CommandDescriptor(
+        name="update.check",
+        summary="Ask GitHub whether a newer HighlighterCS2 release exists",
+        returns="UpdateCheck",
+    ),
+    CommandDescriptor(
+        name="update.install",
+        summary="Download the newest release and schedule it to replace this one",
+        returns="UpdateOutcome",
+        long_running=True,
     ),
     CommandDescriptor(
         name="output.list",

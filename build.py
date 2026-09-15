@@ -3,7 +3,6 @@ from __future__ import annotations
 import shutil
 import subprocess
 import sys
-from contextlib import contextmanager
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -11,75 +10,18 @@ DIST = ROOT / "dist"
 BUILD = ROOT / "build"
 RELEASE_NAME = "HighlighterCS2"
 RELEASE_DIRECTORY = DIST / RELEASE_NAME
-STAGING_DIRECTORY = DIST / f".{RELEASE_NAME}-keep"
+STAGING_DIRECTORY = DIST / f".{RELEASE_NAME}-staging"
+EXECUTABLE_NAME = f"{RELEASE_NAME}.exe"
+BUNDLE_DIRECTORY = "_internal"
 SHIPPED_FILES = ("README.md", "README.ru.md")
 CONFIG_FILE = "config.json"
 CONFIG_TEMPLATE = "config.example.json"
 SHIPPED_DIRECTORIES = ("demos",)
 COPIED_DIRECTORIES = ("docs",)
-PRESERVED_DIRECTORIES = ("tools", "work", "logs", "Highlighter", "demos")
-PRESERVED_FILES = (CONFIG_FILE,)
 BUNDLED_PACKAGES = ("demoparser2", "polars", "pyarrow", "numpy", "pandas", "tqdm", "rich")
 BUNDLED_PACKAGE_ARGUMENTS = tuple(
     argument for package in BUNDLED_PACKAGES for argument in ("--collect-all", package)
 )
-
-
-@contextmanager
-def preserved_runtime_data():
-    if not RELEASE_DIRECTORY.is_dir():
-        yield
-        return
-
-    shutil.rmtree(STAGING_DIRECTORY, ignore_errors=True)
-    STAGING_DIRECTORY.mkdir(parents=True, exist_ok=True)
-    rescued: list[str] = []
-
-    try:
-        locked: list[str] = []
-        for name in PRESERVED_DIRECTORIES:
-            source = RELEASE_DIRECTORY / name
-            if not source.is_dir():
-                continue
-            try:
-                source.rename(STAGING_DIRECTORY / name)
-            except OSError:
-                locked.append(name)
-                continue
-            rescued.append(name)
-
-        for name in PRESERVED_FILES:
-            source = RELEASE_DIRECTORY / name
-            if not source.is_file():
-                continue
-            try:
-                source.rename(STAGING_DIRECTORY / name)
-            except OSError:
-                locked.append(name)
-                continue
-            rescued.append(name)
-
-        if rescued:
-            print(f"Preserving across rebuild: {', '.join(rescued)}")
-        if locked:
-            print(
-                f"In use, left in place (close anything holding them): {', '.join(locked)}"
-            )
-
-        yield
-    finally:
-        RELEASE_DIRECTORY.mkdir(parents=True, exist_ok=True)
-        for name in rescued:
-            destination = RELEASE_DIRECTORY / name
-            if destination.is_dir():
-                shutil.rmtree(destination, ignore_errors=True)
-            else:
-                destination.unlink(missing_ok=True)
-            try:
-                (STAGING_DIRECTORY / name).rename(destination)
-            except OSError:
-                shutil.copy2(STAGING_DIRECTORY / name, destination)
-        shutil.rmtree(STAGING_DIRECTORY, ignore_errors=True)
 
 
 def run_pyinstaller() -> None:
@@ -95,15 +37,48 @@ def run_pyinstaller() -> None:
         RELEASE_NAME,
         "--paths",
         str(ROOT / "src"),
+        "--distpath",
+        str(STAGING_DIRECTORY),
         *BUNDLED_PACKAGE_ARGUMENTS,
         str(ROOT / "main.py"),
     ]
     try:
         subprocess.run(arguments, check=True, cwd=str(ROOT))
     except subprocess.CalledProcessError as error:
+        raise SystemExit(f"PyInstaller failed (exit {error.returncode}).") from error
+
+
+def install_release() -> None:
+    staged = STAGING_DIRECTORY / RELEASE_NAME
+    if not staged.is_dir():
+        raise SystemExit(f"PyInstaller produced nothing at {staged}")
+
+    RELEASE_DIRECTORY.mkdir(parents=True, exist_ok=True)
+    remove_previous_build()
+
+    for item in staged.iterdir():
+        destination = RELEASE_DIRECTORY / item.name
+        if item.is_dir():
+            shutil.copytree(item, destination, dirs_exist_ok=True)
+        else:
+            shutil.copy2(item, destination)
+
+
+def remove_previous_build() -> None:
+    bundle = RELEASE_DIRECTORY / BUNDLE_DIRECTORY
+    executable = RELEASE_DIRECTORY / EXECUTABLE_NAME
+
+    if bundle.is_dir():
+        shutil.rmtree(bundle, ignore_errors=True)
+
+    if not executable.is_file():
+        return
+    try:
+        executable.unlink()
+    except OSError as error:
         raise SystemExit(
-            f"PyInstaller failed (exit {error.returncode}). "
-            f"Close {RELEASE_NAME}.exe if it is still running and try again."
+            f"{EXECUTABLE_NAME} is in use and cannot be replaced ({error.strerror}). "
+            f"Close it and build again."
         ) from error
 
 
@@ -137,18 +112,19 @@ def copy_default_config() -> None:
 
 def clean() -> None:
     shutil.rmtree(BUILD, ignore_errors=True)
+    shutil.rmtree(STAGING_DIRECTORY, ignore_errors=True)
     for spec in ROOT.glob("*.spec"):
         spec.unlink(missing_ok=True)
 
 
 def main() -> int:
-    with preserved_runtime_data():
-        run_pyinstaller()
-
+    run_pyinstaller()
+    install_release()
     copy_release_files()
     clean()
     print(f"\nRelease ready: {RELEASE_DIRECTORY}")
-    print(f"Run it with: {RELEASE_DIRECTORY / (RELEASE_NAME + '.exe')}")
+    print("Your demos, clips, tools, logs and config.json were left untouched.")
+    print(f"Run it with: {RELEASE_DIRECTORY / EXECUTABLE_NAME}")
     return 0
 
 

@@ -212,3 +212,29 @@ def test_terminates_the_game_when_recording_overruns(hlae, game_installation, mo
         launcher.run("session", DEMO)
 
     assert watcher.terminated is True
+
+
+def test_a_console_port_reaches_the_game_command_line(hlae, game_installation):
+    from highlighter.recording.netcon import NetconEndpoint
+
+    launcher = HlaeLauncher(
+        hlae=hlae,
+        installation=game_installation,
+        recording=RecordingConfig(keep_game_open=True),
+        game=GameConfig(),
+        steam_root=STEAM_ROOT,
+        netcon=NetconEndpoint(port=4242, password="hunter2"),
+    )
+    arguments = launcher.build_arguments("highlighter_session", DEMO)
+    command_line = arguments[arguments.index("-cmdLine") + 1]
+
+    assert "-netconport 4242" in command_line
+    assert "-netconpassword hunter2" in command_line
+
+
+def test_no_console_port_is_opened_by_default(hlae, game_installation):
+    launcher = build_launcher(hlae, game_installation)
+    arguments = launcher.build_arguments("highlighter_session", DEMO)
+    command_line = arguments[arguments.index("-cmdLine") + 1]
+
+    assert "-netconport" not in command_line

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from contextlib import contextmanager
 from typing import Iterator
 
@@ -7,11 +8,24 @@ from rich.console import Console
 
 from .theme import supports_text
 
-DONE_MARK = "✓"
-FAILED_MARK = "✗"
-ASCII_DONE_MARK = "OK"
-ASCII_FAILED_MARK = "!!"
-DETAIL_INDENT = "      "
+DONE_MARK = "[+]"
+FAILED_MARK = "[-]"
+DETAIL_MARK = "·"
+ASCII_DETAIL_MARK = "-"
+MARK_WIDTH = 3
+GUTTER = "       "
+SECONDS_PER_MINUTE = 60
+
+
+class Duration:
+    @staticmethod
+    def render(seconds: float) -> str:
+        if seconds < 10:
+            return f"{seconds:.1f}s"
+        if seconds < SECONDS_PER_MINUTE:
+            return f"{seconds:.0f}s"
+        minutes, remainder = divmod(int(seconds), SECONDS_PER_MINUTE)
+        return f"{minutes}m {remainder:02d}s"
 
 
 class StepReporter:
@@ -20,33 +34,45 @@ class StepReporter:
         self._total = total
         self._started = 0
         self._open = False
-        unicode_safe = supports_text(console, DONE_MARK + FAILED_MARK)
-        self._done_mark = DONE_MARK if unicode_safe else ASCII_DONE_MARK
-        self._failed_mark = FAILED_MARK if unicode_safe else ASCII_FAILED_MARK
+        self._started_at = 0.0
+        self._detail_mark = self._centered(
+            DETAIL_MARK if supports_text(console, DETAIL_MARK) else ASCII_DETAIL_MARK
+        )
 
     def begin(self, title: str) -> None:
         self._started += 1
         self._open = True
-        self._console.print(
-            f"[accent]{self._started}/{self._total}[/accent] [brand]{title}[/brand]"
-        )
+        self._started_at = time.monotonic()
+        counter = f"{self._started}/{self._total}"
+        self._console.print(f"[accent]{counter:>5}[/accent]  [brand]{title}[/brand]")
 
     def detail(self, message: str) -> None:
-        self._console.print(f"{DETAIL_INDENT}[muted]{message}[/muted]")
+        self._console.print(f"{GUTTER}[muted]{self._detail_mark} {message}[/muted]")
 
     def done(self, note: str = "") -> None:
         if not self._open:
             return
         self._open = False
-        suffix = f" [muted]{note}[/muted]" if note else ""
-        self._console.print(f"{DETAIL_INDENT}[success]{self._done_mark}[/success]{suffix}")
+        body = f" {note} " if note else " "
+        self._console.print(
+            f"{GUTTER}[success]{DONE_MARK}[/success]{body} {self._elapsed()}"
+        )
 
     def fail(self, note: str = "") -> None:
         if not self._open:
             return
         self._open = False
-        suffix = f" {note}" if note else " failed"
-        self._console.print(f"{DETAIL_INDENT}[danger]{self._failed_mark}{suffix}[/danger]")
+        body = note or "failed"
+        self._console.print(
+            f"{GUTTER}[danger]{FAILED_MARK} {body}[/danger]  {self._elapsed()}"
+        )
+
+    def _elapsed(self) -> str:
+        return f"[muted]{Duration.render(time.monotonic() - self._started_at)}[/muted]"
+
+    @staticmethod
+    def _centered(mark: str) -> str:
+        return f"{mark:^{MARK_WIDTH}}"
 
     @contextmanager
     def step(self, title: str) -> Iterator["StepReporter"]:

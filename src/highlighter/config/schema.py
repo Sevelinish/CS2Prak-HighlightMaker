@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
-CONFIG_VERSION = 9
+CONFIG_VERSION = 14
 
 DEFAULT_TAG_WEIGHTS: dict[str, float] = {
     "kills_2": 4.0,
@@ -107,6 +107,12 @@ class RecordingConfig:
     close_game_when_done: bool = True
     open_output_folder: bool = True
     single_file: bool = False
+    keep_game_open: bool = False
+    handover_channel: str = "netcon"
+    handover_interval_seconds: float = 1.0
+    handover_timeout_seconds: float = 120.0
+    take_settle_seconds: float = 2.0
+    take_stall_seconds: float = 120.0
 
     @classmethod
     def from_mapping(cls, source: Mapping[str, Any]) -> "RecordingConfig":
@@ -139,6 +145,22 @@ class RecordingConfig:
                 _read(source, "openOutputFolder", default.open_output_folder)
             ),
             single_file=bool(_read(source, "singleFile", default.single_file)),
+            keep_game_open=bool(_read(source, "keepGameOpen", default.keep_game_open)),
+            handover_channel=str(
+                _read(source, "handoverChannel", default.handover_channel)
+            ),
+            handover_interval_seconds=float(
+                _read(source, "handoverIntervalSeconds", default.handover_interval_seconds)
+            ),
+            handover_timeout_seconds=float(
+                _read(source, "handoverTimeoutSeconds", default.handover_timeout_seconds)
+            ),
+            take_settle_seconds=float(
+                _read(source, "takeSettleSeconds", default.take_settle_seconds)
+            ),
+            take_stall_seconds=float(
+                _read(source, "takeStallSeconds", default.take_stall_seconds)
+            ),
         )
 
     def to_mapping(self) -> dict[str, Any]:
@@ -162,6 +184,12 @@ class RecordingConfig:
             "closeGameWhenDone": self.close_game_when_done,
             "openOutputFolder": self.open_output_folder,
             "singleFile": self.single_file,
+            "keepGameOpen": self.keep_game_open,
+            "handoverChannel": self.handover_channel,
+            "handoverIntervalSeconds": self.handover_interval_seconds,
+            "handoverTimeoutSeconds": self.handover_timeout_seconds,
+            "takeSettleSeconds": self.take_settle_seconds,
+            "takeStallSeconds": self.take_stall_seconds,
         }
 
 
@@ -221,6 +249,9 @@ class NadeConfig:
     landing_cut_seconds: float = 0.5
     landing_lead_seconds: float = 3.0
     landing_hold_seconds: float = 3.0
+    camera_mode: str = "flight"
+    minimum_approach: float = 60.0
+    maximum_group_spread: float = 600.0
     landing_distance: float = 220.0
     landing_height: float = 90.0
     callout_sample_stride: int = 64
@@ -244,6 +275,13 @@ class NadeConfig:
             landing_hold_seconds=float(
                 _read(source, "landingHoldSeconds", default.landing_hold_seconds)
             ),
+            camera_mode=str(_read(source, "cameraMode", default.camera_mode)),
+            minimum_approach=float(
+                _read(source, "minimumApproach", default.minimum_approach)
+            ),
+            maximum_group_spread=float(
+                _read(source, "maximumGroupSpread", default.maximum_group_spread)
+            ),
             landing_distance=float(
                 _read(source, "landingDistance", default.landing_distance)
             ),
@@ -262,6 +300,9 @@ class NadeConfig:
             "landingCutSeconds": self.landing_cut_seconds,
             "landingLeadSeconds": self.landing_lead_seconds,
             "landingHoldSeconds": self.landing_hold_seconds,
+            "cameraMode": self.camera_mode,
+            "minimumApproach": self.minimum_approach,
+            "maximumGroupSpread": self.maximum_group_spread,
             "landingDistance": self.landing_distance,
             "landingHeight": self.landing_height,
             "calloutSampleStride": self.callout_sample_stride,
@@ -362,6 +403,7 @@ class GameConfig:
         ]
     )
     hook_dll_relative_path: str = "x64/AfxHookSource2.dll"
+    netcon_port: int = 0
     steam_environment: dict[str, str] = field(
         default_factory=lambda: {
             "SteamAppId": "730",
@@ -416,6 +458,7 @@ class GameConfig:
             launch_arguments=[
                 str(item) for item in _read(source, "launchArguments", default.launch_arguments)
             ],
+            netcon_port=int(_read(source, "netconPort", default.netcon_port)),
             hook_dll_relative_path=str(
                 _read(source, "hookDllRelativePath", default.hook_dll_relative_path)
             ),
@@ -452,6 +495,7 @@ class GameConfig:
             "tickRate": self.tick_rate,
             "launchArguments": list(self.launch_arguments),
             "hookDllRelativePath": self.hook_dll_relative_path,
+            "netconPort": self.netcon_port,
             "steamEnvironment": dict(self.steam_environment),
             "consoleVariables": dict(self.console_variables),
             "gameStartupTimeoutSeconds": self.game_startup_timeout_seconds,
@@ -459,6 +503,39 @@ class GameConfig:
             "applyHighGraphics": self.apply_high_graphics,
             "restoreGraphicsOnExit": self.restore_graphics_on_exit,
             "hlaeArgumentTemplate": list(self.hlae_argument_template),
+        }
+
+
+@dataclass(slots=True)
+class UpdateConfig:
+    release_api_url: str = (
+        "https://api.github.com/repos/Sevelinish/CS2Prak-HighlightMaker/releases/latest"
+    )
+    asset_pattern: str = "*.zip"
+    check_on_start: bool = False
+    relaunch_after_install: bool = False
+    timeout_seconds: int = 600
+
+    @classmethod
+    def from_mapping(cls, source: Mapping[str, Any]) -> "UpdateConfig":
+        default = cls()
+        return cls(
+            release_api_url=str(_read(source, "releaseApiUrl", default.release_api_url)),
+            asset_pattern=str(_read(source, "assetPattern", default.asset_pattern)),
+            check_on_start=bool(_read(source, "checkOnStart", default.check_on_start)),
+            relaunch_after_install=bool(
+                _read(source, "relaunchAfterInstall", default.relaunch_after_install)
+            ),
+            timeout_seconds=int(_read(source, "timeoutSeconds", default.timeout_seconds)),
+        )
+
+    def to_mapping(self) -> dict[str, Any]:
+        return {
+            "releaseApiUrl": self.release_api_url,
+            "assetPattern": self.asset_pattern,
+            "checkOnStart": self.check_on_start,
+            "relaunchAfterInstall": self.relaunch_after_install,
+            "timeoutSeconds": self.timeout_seconds,
         }
 
 
@@ -515,6 +592,7 @@ class ApplicationConfig:
     detection: DetectionConfig = field(default_factory=DetectionConfig)
     game: GameConfig = field(default_factory=GameConfig)
     toolchain: ToolchainConfig = field(default_factory=ToolchainConfig)
+    update: UpdateConfig = field(default_factory=UpdateConfig)
 
     @classmethod
     def from_mapping(cls, source: Mapping[str, Any]) -> "ApplicationConfig":
@@ -528,6 +606,7 @@ class ApplicationConfig:
             detection=DetectionConfig.from_mapping(source.get("detection") or {}),
             game=GameConfig.from_mapping(source.get("game") or {}),
             toolchain=ToolchainConfig.from_mapping(source.get("toolchain") or {}),
+            update=UpdateConfig.from_mapping(source.get("update") or {}),
         )
 
     def to_mapping(self) -> dict[str, Any]:
@@ -542,4 +621,5 @@ class ApplicationConfig:
             "detection": self.detection.to_mapping(),
             "game": self.game.to_mapping(),
             "toolchain": self.toolchain.to_mapping(),
+            "update": self.update.to_mapping(),
         }

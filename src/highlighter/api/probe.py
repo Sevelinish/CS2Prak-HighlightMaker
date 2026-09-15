@@ -11,6 +11,7 @@ from ..media.encoders import EncoderSelector
 from ..provisioning.archive import ArchiveExtractor
 from ..provisioning.hlae_installation import HlaeInstallation
 from ..recording.game_process import GameProcessWatcher
+from ..recording.warm_session import WarmSessionStore
 from .workspace import DemoWorkspace
 
 HLAE_EXECUTABLE = "HLAE.exe"
@@ -45,6 +46,7 @@ class SystemProbe:
             "ready": all(tool.ready for tool in tools),
             "tools": [tool.to_mapping() for tool in tools],
             "gameRunning": self._game_running(),
+            "warmSession": self._warm_session(config),
             "encoder": self._encoder(config, Path(ffmpeg.path) if ffmpeg.ready else None),
             "autoDownload": config.toolchain.auto_download,
             "demoDirectories": [
@@ -54,6 +56,11 @@ class SystemProbe:
                 self._workspace.paths.resolve(config.paths.output_directory)
             ),
         }
+
+    def _warm_session(self, config: ApplicationConfig) -> dict[str, Any] | None:
+        work_directory = self._workspace.paths.resolve(config.paths.work_directory)
+        session = WarmSessionStore(work_directory).live()
+        return session.to_mapping() if session is not None else None
 
     def _game_status(self, config: ApplicationConfig) -> ToolStatus:
         installation = self._workspace.installation()

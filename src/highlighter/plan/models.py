@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-PLAN_VERSION = 3
+PLAN_VERSION = 4
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,6 +119,8 @@ class RecordingPlan:
     width: int
     height: int
     output_directory: Path
+    demo_end_tick: int = 0
+    merged_sources: int = 0
     clips: list[ClipSpec] = field(default_factory=list)
 
     @property
@@ -137,6 +139,7 @@ class RecordingPlan:
                 "name": self.demo_name,
                 "map": self.map_name,
                 "tickRate": self.tick_rate,
+                "endTick": self.demo_end_tick,
             },
             "recording": {
                 "fps": self.fps,
@@ -146,5 +149,6 @@ class RecordingPlan:
             "output": {
                 "directory": str(self.output_directory),
             },
+            "mergedSources": self.merged_sources,
             "clips": [clip.to_mapping() for clip in self.clips],
         }

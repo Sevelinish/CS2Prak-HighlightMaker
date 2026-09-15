@@ -65,8 +65,10 @@ class ClipSegmenter:
         start_tick = max(0, draft.start_tick)
         end_tick = draft.last_kill_tick + self._ticks(tail_seconds)
         if round_ is not None:
-            start_tick = max(start_tick, round_.freeze_end_tick)
-            end_tick = min(end_tick, round_.end_tick)
+            if draft.kill_ticks[0] >= round_.freeze_end_tick:
+                start_tick = max(start_tick, round_.freeze_end_tick)
+            if draft.last_kill_tick <= round_.end_tick:
+                end_tick = min(end_tick, round_.end_tick)
 
         end_tick = max(end_tick, start_tick + self._match.tick_rate)
         maximum_span = self._ticks(self._settings.max_clip_seconds)

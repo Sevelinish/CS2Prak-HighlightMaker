@@ -29,11 +29,12 @@ the API stays a machine tool, and neither is allowed to break the other.
 6. [The selection object](#the-selection-object)
 7. [Per job overrides](#per-job-overrides)
 8. [Jobs](#jobs)
-9. [Events](#events)
-10. [Command reference](#command-reference)
-11. [Error codes](#error-codes)
-12. [Integration recipe](#integration-recipe)
-13. [Guarantees and limits](#guarantees-and-limits)
+9. [Keeping the game open](#keeping-the-game-open)
+10. [Events](#events)
+11. [Command reference](#command-reference)
+12. [Error codes](#error-codes)
+13. [Integration recipe](#integration-recipe)
+14. [Guarantees and limits](#guarantees-and-limits)
 
 ## Starting the plugin
 
@@ -384,13 +385,14 @@ A running job moves through eight stages. `progress.stage` is the current one an
 | 2 | Selecting `<source>` | The selection is applied |
 | 3 | Planning clips | Segments, camera beats and the plan file are written |
 | 4 | Preparing HLAE and ffmpeg | Tools are located, downloaded once if missing |
-| 5 | Launching Counter-Strike 2 | HLAE injects the hook and hands the game over |
-| 6 | Recording N clips | The demo plays and the takes are captured |
+| 5 | Starting Counter-Strike 2 | HLAE injects the hook, or the running game is reused |
+| 6 | Recording N clips | The demo plays, the takes are written, then the game is closed |
 | 7 | Saving videos | Takes are encoded into the output folder |
 | 8 | Opening the output folder | Skipped when `recording.openOutputFolder` is false |
 
 Stage 4 can take a long time on the very first run, because HLAE and ffmpeg are downloaded.
-Stage 5 covers the CS2 startup, which is normally 60 to 120 seconds on its own.
+Stage 5 covers the CS2 startup, which is normally 60 to 120 seconds on its own, unless a warm
+session is reused. See [Keeping the game open](#keeping-the-game-open).
 
 ### Cancellation
 
@@ -402,6 +404,120 @@ Stage 5 covers the CS2 startup, which is normally 60 to 120 seconds on its own.
 - A final job is returned unchanged.
 
 A cancelled job carries no `error`. Treat `cancelled` as a normal outcome, not a failure.
+
+## Keeping the game open
+
+Starting Counter-Strike 2 costs about 60 to 120 seconds, and it is the single largest part of
+a short recording. A job can leave the game running so the next one skips it.
+
+Set `keepGameOpen` on `jobs.submit`, or `recording.keepGameOpen` in the configuration or in a
+job's `overrides`. The command line spelling is `-exit0`.
+
+### Two channels
+
+Reusing a game means sending it console commands, and there are two ways to do that. The
+channel is chosen by `recording.handoverChannel`.
+
+**`netcon` (default).** The game is launched with a console port on loopback, protected by a
+password generated for that launch. When the last clip is done the demo is closed with
+`disconnect` and the game sits on the main menu, which is what the user expects to see. The
+next job connects to that port and sends `exec highlighter_session` followed by `playdemo`,
+exactly the order a cold launch uses.
+
+**`demo`.** No port is opened. Instead the demo stays loaded: the last clip clears the mirv
+schedule, rewinds to the start and arms a listener, which is a set of `mirv_cmd addAtTick`
+entries spread across the demo, each running `exec highlighter_handover`. That cfg does not
+exist yet, which costs nothing. The next job writes it last, and the running game picks it up
+within `handoverIntervalSeconds`. As soon as the first take starts growing the plugin deletes
+the cfg so the listener has nothing left to run.
+
+The `demo` channel keeps the demo playing in the background, which some people find confusing.
+It exists because it needs nothing from the engine beyond `exec`.
+
+### Falling back on its own
+
+`netcon` is probed right after the game starts. If the port never opens, the plugin switches
+that session to the `demo` channel before the recording reaches its last clip, and says so in a
+stage detail. Nothing fails and no job is lost.
+
+### What the marker holds
+
+The plugin writes a marker recording the process id, the channel, the console port, the demo,
+the resolution and how long the session stays usable. The console password is kept in the
+marker file only and is never returned by the API.
+
+### What happens at the start of the next job
+
+The process must still be alive, the window must be the same size and mode, and the session
+must not have expired. A `netcon` session accepts any demo, because it can load one. A `demo`
+session only accepts the demo that is already loaded.
+
+### When a fresh game is launched anyway
+
+The plugin launches a fresh game, without failing the job, when:
+
+- there is no marker, or the process behind it is gone
+- the resolution or window mode differs, or a `demo` session is asked for another demo
+- the warm window has run out
+- the console port does not answer, or the running game produces nothing within
+  `handoverTimeoutSeconds`
+
+In the last case the stale game is closed first, because a second CS2 cannot be started
+alongside it.
+
+### How long a session stays warm
+
+On the `netcon` channel the game waits on the main menu and the window is a formality, sized
+from the demo length and reported as `secondsLeft`.
+
+On the `demo` channel the rewind means the demo replays from the start and the listener is
+armed for that playback, so the window really is about one demo length. When it runs out the
+demo ends, the game returns to the menu and the next job launches a fresh one.
+
+### How a recording is known to be finished
+
+Not by the game exiting. HLAE pipes raw frames to `ffmpeg.exe` child processes, and those keep
+encoding after the last frame and write the mp4 index at the very end. On Windows they outlive
+the game, so a job that assembled as soon as `cs2.exe` disappeared was reading files that were
+still being written.
+
+Every job, warm or not, waits for the take files instead: done when every segment has a video
+file and the total size has stopped changing for `takeSettleSeconds`. If the game disappears
+first, the takes are still given time to finish. If nothing changes for `takeStallSeconds` the
+plugin stops waiting and encodes whatever was captured.
+
+The `quit` is scheduled a few seconds of demo time after the last clip rather than on the same
+line, so HLAE can close its streams cleanly, and the plugin closes the game itself if that
+never happens.
+
+### Settings
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `recording.keepGameOpen` | `false` | Leave the game running when a job finishes |
+| `recording.handoverChannel` | `netcon` | `netcon` closes the demo, `demo` keeps it playing |
+| `recording.handoverIntervalSeconds` | `1.0` | How often the running game looks for a new script, `demo` channel only |
+| `recording.handoverTimeoutSeconds` | `120.0` | How long to wait for the running game to produce |
+| `game.netconPort` | `0` | Console port for a kept open game, `0` picks a free one |
+| `recording.takeSettleSeconds` | `2.0` | How long a take must stop growing before it counts as done |
+| `recording.takeStallSeconds` | `120.0` | How long to wait on a recording that stopped producing |
+
+### About the console port
+
+The port is opened only when `keepGameOpen` is on, only for the lifetime of that game, and it
+is bound by the engine on the local machine with a password generated per launch. Set
+`game.netconPort` to pin it to a known number, or set `recording.handoverChannel` to `demo` if
+you would rather no port were opened at all.
+
+`session.get` reports the port so a launcher can show it. The password is never returned.
+
+### Video settings while warm
+
+Recording rewrites the CS2 video settings and puts them back when the game closes. While a
+session is warm the game still owns those files, so the restore is deferred. It happens on the
+next cold launch, or on `session.release`. Backups are kept next to the originals with a
+`.highlighter-backup` suffix, so the values that come back are the ones from before the first
+recording.
 
 ## Events
 
@@ -476,8 +592,10 @@ CS2 and HLAE do not allow.
 Report readiness without downloading anything. Call it before offering a Record button.
 
 Returns `ready` (true when CS2, HLAE and ffmpeg are all usable), a `tools` array of
-`{name, ready, path, note}`, `gameRunning`, the selected `encoder`, `autoDownload`, the demo
-search directories and the output directory.
+`{name, ready, path, note}`, `gameRunning`, `warmSession`, the selected `encoder`,
+`autoDownload`, the demo search directories and the output directory.
+
+`warmSession` is the game left running by an earlier job, or `null`.
 
 `gameRunning` is important: a recording refuses to start while CS2 is already open.
 
@@ -580,6 +698,11 @@ Each grenade carries `id`, `kind`, `roundNumber`, `thrower`, `side`, `throwTick`
 `detonateTick`, `flightSeconds`, `roundTimeSeconds`, `roundClock`, `landingPlace`, `landing`,
 `throwerPosition`, `throwerAngles`, `setpos` and `setang`.
 
+`camera` is the landing camera the recorder would use: `{mode, reason, position, angles}`.
+`mode` is `flight` when it was taken from the line the grenade flew in on, or `thrower` when
+there was not enough clean flight and it fell back to the line back to the thrower.
+`flightSamples` says how many trajectory samples were available.
+
 `landingPlace` comes from the map's own nav place names, so it reads as `Window`,
 `BombsiteB`, `Connector` and so on, and it works on any map without a hard coded table. When
 no place is close enough the value is `unknown`.
@@ -602,6 +725,12 @@ recording will take before they commit.
 Returns `{source, plan}`. The plan holds `demo`, `recording`, `output`, `clips` and a
 `summary` of `{clipCount, segmentCount, totalSeconds}`.
 
+`summary.mergedSources` counts how many selected items were folded into a clip they shared with
+another. Grenades thrown within a few seconds of each other, and highlights from two players in
+the same firefight, cover the same stretch of the demo. The recorder plays the demo once, so two
+overlapping recordings would cut each other short, and those are filmed as one clip instead. Pick
+four grenades in one execute and you may get one clip back rather than four.
+
 Each clip lists its `segments` and `beats`. A segment is a continuous stretch of demo time
 that is actually recorded, so more than one segment means dead time was cut out. A beat is a
 timed console action inside a clip, used by grenade clips for the zoom hold and the cut to
@@ -619,6 +748,7 @@ Fails with `empty_selection` when nothing matched.
 | `overrides` | object | See [Per job overrides](#per-job-overrides) |
 | `label` | string | Free text carried on the job for your own bookkeeping |
 | `validate` | boolean | Check the selection before queueing. Default `true` |
+| `keepGameOpen` | boolean | Leave CS2 running when the job finishes so the next one skips the startup |
 
 Returns the job document. The job is `queued` at this point.
 
@@ -677,12 +807,71 @@ Returns the job document. See [Cancellation](#cancellation).
 Returns `{jobId, state, result, error}`. The result holds `outputDirectory`,
 `requestedClips`, `producedClips`, `artifacts` and `reel`.
 
+The result also carries `reusedGame`, true when this job skipped the CS2 startup, and
+`warmSession`, the session left behind for the next job or `null`.
+
 An artifact is `{name, path, kind, durationSeconds, segmentCount, hasAudio}` where `kind` is
 `clip` or `reel`. `reel` is only present when `recording.singleFile` was on, and it is the
 single joined video.
 
 `producedClips` can be lower than `requestedClips` when a take failed to capture. That is
 reported as success with fewer artifacts, not as a failed job.
+
+### session.get
+
+Report the game left running for the next recording. Takes no payload.
+
+Returns `{active, session}`. The session is `null` when nothing is being kept open, otherwise
+it carries `pid`, `executable`, `demoPath`, `demoName`, `configDirectory`, `handoverScript`,
+`width`, `height`, `fullscreen`, `startedAt`, `expiresAt`, `secondsLeft`,
+`graphicsRestorePending`, `channel`, `netconPort` and `demoClosed`.
+
+`demoClosed` is true when the game is waiting on the main menu rather than replaying a demo.
+
+A session whose process is gone is reported as inactive and its marker is cleared.
+
+### session.release
+
+Close the game that is being kept open and put the CS2 video settings back.
+
+| Payload | Type | Meaning |
+| --- | --- | --- |
+| none | | |
+
+Returns `{released, pid, graphicsRestored}`, or `{released: false, reason}` when there was
+nothing to release. Call it when the user is done recording for now, otherwise the game sits
+on the main menu until they close it.
+
+### update.check
+
+Ask GitHub whether a newer HighlighterCS2 release exists. Takes no payload.
+
+Returns `{current, latest, available, release}`. `release` carries `tag`, `name`, `assetName`,
+`sizeBytes`, `publishedAt` and `pageUrl`, or is `null` when the feed could not be read.
+
+`latest` is `null` when the newest release has no tag that parses as a version. Treat that as
+"unknown", not as "up to date".
+
+### update.install
+
+Download the newest release and schedule it to replace the running one.
+
+| Payload | Type | Meaning |
+| --- | --- | --- |
+| none | | |
+
+Returns `{installing, check, version, script, log, relaunch}` when an update was staged, or
+`{installing: false, reason, check}` when the current version is already the newest.
+
+The plugin does not replace itself while it is running. It stages the new release, writes an
+installer script and starts it detached. That script waits for this process to exit, replaces
+the program files and leaves a marker the next start reports. So the caller should shut the
+plugin down right after a successful `update.install`, then start it again a few seconds later.
+
+`config.json`, the output folder, `demos`, `tools`, `work` and `logs` are excluded from the
+replacement, so nothing the user produced is lost.
+
+Fails with `internal` when the plugin is running from source rather than from a built release.
 
 ### output.list
 
@@ -817,6 +1006,10 @@ reacts within milliseconds. There is no need for a timer.
 
 ## Guarantees and limits
 
+**The warm game is a single slot.** Only one game is ever kept open, and it is tied to one
+demo at one resolution. A job for a different demo launches a fresh game and the old marker is
+replaced.
+
 **One recording at a time.** CS2 and HLAE cannot record two demos at once. Submitting more
 jobs is fine, they queue. `system.probe` reports `gameRunning`, and a job started while CS2
 is already open fails with `recording_failed`.
@@ -836,6 +1029,9 @@ dropped. The event journal keeps the last 4000 events.
 
 **The API never prompts.** Every interactive prompt of the command line app is replaced by an
 explicit request field. Nothing waits for console input.
+
+**Updating replaces the program, not the data.** `update.install` swaps the executable and its
+bundle. `config.json`, the output folder, `demos`, `tools`, `work` and `logs` are left alone.
 
 **Windows only.** The recorder depends on HLAE, which is Windows only. The API refuses
 nothing on other platforms, but recording cannot work there.

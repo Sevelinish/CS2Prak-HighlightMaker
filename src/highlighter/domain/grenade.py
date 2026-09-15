@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
+from .flight import GrenadeFlight
 from .geometry import Vector3, ViewAngles
 from .player import Player
 from .team import TeamSide
@@ -91,6 +92,7 @@ class Grenade:
     landing: Vector3
     landing_place: str = UNKNOWN_PLACE
     round_time_seconds: float = 0.0
+    flight: GrenadeFlight = field(default_factory=GrenadeFlight)
 
     @property
     def flight_ticks(self) -> int:

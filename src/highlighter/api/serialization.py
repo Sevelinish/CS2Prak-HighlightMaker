@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from ..domain.camera import LandingCameraDirector
 from ..domain.grenade import Grenade
 from ..domain.highlight import Highlight
 from ..domain.kill import Kill
@@ -123,8 +124,12 @@ class HighlightView:
 
 class GrenadeView:
     @staticmethod
-    def render(match: Match, grenade: Grenade) -> dict[str, Any]:
-        return {
+    def render(
+        match: Match,
+        grenade: Grenade,
+        director: LandingCameraDirector | None = None,
+    ) -> dict[str, Any]:
+        document = {
             "id": Identity.for_grenade(grenade),
             "kind": grenade.kind.value,
             "roundNumber": grenade.round_number,
@@ -141,7 +146,16 @@ class GrenadeView:
             "throwerAngles": grenade.thrower_angles.to_mapping(),
             "setpos": grenade.setpos_command,
             "setang": grenade.setang_command,
+            "flightSamples": len(grenade.flight.points),
         }
+        if director is not None:
+            shot = director.direct(grenade)
+            document["camera"] = {
+                "mode": shot.mode,
+                "reason": shot.reason,
+                **shot.placement.to_mapping(),
+            }
+        return document
 
 
 class MatchView:
@@ -197,6 +211,7 @@ class PlanView:
         payload = plan.to_mapping()
         payload["summary"] = {
             "clipCount": plan.clip_count,
+            "mergedSources": plan.merged_sources,
             "segmentCount": sum(len(clip.segments) for clip in plan.clips),
             "totalSeconds": round(plan.total_seconds, 2),
         }
