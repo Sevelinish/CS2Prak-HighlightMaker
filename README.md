@@ -113,7 +113,7 @@ Every stage prints its own line with a number, an outcome and details:
 
 ```
 ╭───────────────────────────────╮
-│  HighlighterCS2 1.2.0         │
+│  HighlighterCS2 1.3.0         │
 │  CS2 demo highlight recorder  │
 ╰───────────────────────────────╯
 

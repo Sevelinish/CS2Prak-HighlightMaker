@@ -226,15 +226,15 @@ def write_swap(tmp_path: Path, relaunch: bool = False) -> str:
 def test_the_installer_waits_for_the_old_process(tmp_path):
     script = write_swap(tmp_path)
 
-    assert '/FI "PID eq 4242"' in script
     assert ":wait" in script
     assert "goto ready" in script
+    assert "4242" in script
 
 
 def test_the_installer_calls_windows_tools_by_full_path(tmp_path):
     script = write_swap(tmp_path)
 
-    for tool in ("tasklist.exe", "find.exe", "ping.exe", "robocopy.exe"):
+    for tool in ("ping.exe", "robocopy.exe"):
         assert f'"%SYSTEM%{chr(92)}{tool}"' in script
     assert r'set "SYSTEM=%SystemRoot%\System32"' in script
 
@@ -332,3 +332,90 @@ def test_the_update_flag_is_understood():
     assert CommandLine.parse(["-update"]).update is True
     assert CommandLine.parse(["--update"]).update is True
     assert CommandLine.parse(["match.dem"]).update is False
+
+
+def test_the_installer_does_not_shell_out_to_tasklist(tmp_path):
+    script = write_swap(tmp_path)
+
+    assert "tasklist" not in script
+    assert "find.exe" not in script
+
+
+def test_the_installer_waits_on_the_program_file_itself(tmp_path):
+    script = write_swap(tmp_path)
+
+    assert r'2>nul (>>"%TARGET%\HighlighterCS2.exe" (call )) && goto ready' in script
+
+
+def test_the_installer_still_gives_up_rather_than_forcing_it(tmp_path):
+    script = write_swap(tmp_path)
+
+    assert ":giveup" in script
+    assert script.index(":giveup") < script.index(":ready")
+
+
+def test_a_truncated_download_is_refused(tmp_path):
+    from highlighter.provisioning.downloader import FileDownloader
+
+    destination = tmp_path / "release.zip"
+    destination.write_bytes(b"0" * 100)
+    downloader = FileDownloader(quiet_console(), 5)
+
+    with pytest.raises(DownloadError, match="incomplete"):
+        downloader._verify(destination, "release.zip", 100, 5_000, 0)
+
+    assert not destination.exists()
+
+
+def test_a_download_that_matches_the_announced_size_is_accepted(tmp_path):
+    from highlighter.provisioning.downloader import FileDownloader
+
+    destination = tmp_path / "release.zip"
+    destination.write_bytes(b"0" * 100)
+
+    FileDownloader(quiet_console(), 5)._verify(destination, "release.zip", 100, 100, 0)
+
+    assert destination.is_file()
+
+
+def test_the_release_size_is_used_when_the_server_announces_nothing(tmp_path):
+    from highlighter.provisioning.downloader import FileDownloader
+
+    destination = tmp_path / "release.zip"
+    destination.write_bytes(b"0" * 100)
+    downloader = FileDownloader(quiet_console(), 5)
+
+    with pytest.raises(DownloadError, match="incomplete"):
+        downloader._verify(destination, "release.zip", 100, None, 143_132_983)
+
+
+def test_an_empty_download_is_refused(tmp_path):
+    from highlighter.provisioning.downloader import FileDownloader
+
+    destination = tmp_path / "release.zip"
+    destination.write_bytes(b"")
+
+    with pytest.raises(DownloadError, match="empty"):
+        FileDownloader(quiet_console(), 5)._verify(destination, "release.zip", 0, 0, 0)
+
+
+def test_the_release_size_reaches_the_downloader(tmp_path, monkeypatch):
+    from highlighter.update.payload import PayloadStager
+
+    seen = {}
+    stager = PayloadStager(quiet_console(), UpdateConfig(), tmp_path / "update")
+
+    class Recorder:
+        def __init__(self, console, timeout):
+            pass
+
+        def download(self, url, destination, label, expected_bytes=0):
+            seen["expected"] = expected_bytes
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(b"x")
+            return destination
+
+    monkeypatch.setattr("highlighter.update.payload.FileDownloader", Recorder)
+    stager._download(make_release())
+
+    assert seen["expected"] == 143_000_000

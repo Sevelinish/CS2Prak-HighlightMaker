@@ -10,11 +10,10 @@ LOG_NAME = "update.log"
 MAXIMUM_WAIT_TICKS = 180
 ROBOCOPY_FAILURE_LEVEL = 8
 SYSTEM_DIRECTORY = r"%SystemRoot%\System32"
-TASKLIST = r'"%SYSTEM%\tasklist.exe"'
-FIND = r'"%SYSTEM%\find.exe"'
 PING = r'"%SYSTEM%\ping.exe"'
 ROBOCOPY = r'"%SYSTEM%\robocopy.exe"'
 BUNDLE = r'"%TARGET%\_internal"'
+PROGRAM = r'"%TARGET%\HighlighterCS2.exe"'
 RELEASE_EXECUTABLE = "HighlighterCS2.exe"
 
 
@@ -98,11 +97,9 @@ class SwapScriptWriter:
                 f'set "MARKER={plan.marker}"',
                 'set "WAITED=0"',
                 "",
-                f'>>"%LOGFILE%" echo [%date% %time%] waiting for pid {process_id}',
+                f'>>"%LOGFILE%" echo [%date% %time%] waiting for pid {process_id} to let go',
                 ":wait",
-                f'{TASKLIST} /FI "PID eq {process_id}" /NH 2>nul'
-                f' | {FIND} "{process_id}" >nul',
-                "if errorlevel 1 goto ready",
+                f"2>nul (>>{PROGRAM} (call )) && goto ready",
                 "set /a WAITED+=1",
                 f"if %WAITED% GEQ {MAXIMUM_WAIT_TICKS} goto giveup",
                 f"{PING} -n 2 127.0.0.1 >nul",

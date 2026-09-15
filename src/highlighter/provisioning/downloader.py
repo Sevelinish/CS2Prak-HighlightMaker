@@ -25,23 +25,45 @@ class FileDownloader:
         self._console = console
         self._timeout_seconds = timeout_seconds
 
-    def download(self, url: str, destination: Path, label: str) -> Path:
+    def download(
+        self, url: str, destination: Path, label: str, expected_bytes: int = 0
+    ) -> Path:
         destination.parent.mkdir(parents=True, exist_ok=True)
         request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
 
         try:
             with urllib.request.urlopen(request, timeout=self._timeout_seconds) as response:
-                total = self._content_length(response.headers.get("Content-Length"))
-                self._stream(response, destination, label, total)
-        except urllib.error.URLError as error:
+                announced = self._content_length(response.headers.get("Content-Length"))
+                written = self._stream(response, destination, label, announced)
+        except (urllib.error.URLError, OSError) as error:
             destination.unlink(missing_ok=True)
             raise DownloadError(f"Could not download {label} from {url}: {error}") from error
 
-        if not destination.is_file() or destination.stat().st_size == 0:
-            raise DownloadError(f"Downloaded {label} archive is empty")
+        self._verify(destination, label, written, announced, expected_bytes)
         return destination
 
-    def _stream(self, response, destination: Path, label: str, total: int | None) -> None:
+    def _verify(
+        self,
+        destination: Path,
+        label: str,
+        written: int,
+        announced: int | None,
+        expected_bytes: int,
+    ) -> None:
+        if not destination.is_file() or written == 0:
+            destination.unlink(missing_ok=True)
+            raise DownloadError(f"Downloaded {label} archive is empty")
+
+        wanted = announced or expected_bytes
+        if wanted and written != wanted:
+            destination.unlink(missing_ok=True)
+            raise DownloadError(
+                f"{label} arrived incomplete: got {written:,} of {wanted:,} bytes. "
+                f"Check the connection and try again."
+            )
+
+    def _stream(self, response, destination: Path, label: str, total: int | None) -> int:
+        written = 0
         with self._build_progress() as progress:
             task = progress.add_task(label, total=total)
             with destination.open("wb") as target:
@@ -50,7 +72,9 @@ class FileDownloader:
                     if not chunk:
                         break
                     target.write(chunk)
+                    written += len(chunk)
                     progress.update(task, advance=len(chunk))
+        return written
 
     def _build_progress(self) -> Progress:
         return Progress(

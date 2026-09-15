@@ -72,7 +72,12 @@ class PayloadStager:
     def _download(self, release: ReleaseInfo) -> Path:
         destination = self._staging / (release.asset_name or "release.zip")
         downloader = FileDownloader(self._console, self._settings.timeout_seconds)
-        return downloader.download(release.asset_url, destination, release.asset_name)
+        return downloader.download(
+            release.asset_url,
+            destination,
+            release.asset_name,
+            expected_bytes=release.size_bytes,
+        )
 
     def _locate_root(self, extracted: Path, release: ReleaseInfo) -> Path:
         executable = self._extractor.find_executable(extracted, RELEASE_EXECUTABLE)
