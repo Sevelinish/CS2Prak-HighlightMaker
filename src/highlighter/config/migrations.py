@@ -296,6 +296,36 @@ class GroupedThrowMigration(ConfigMigration):
         raw.setdefault("nades", {}).setdefault("maximumGroupSpread", 600.0)
 
 
+class ChaseCameraMigration(ConfigMigration):
+    version = 15
+    reason = "the camera can now fly behind a grenade from the throw to the detonation"
+    SETTINGS = {
+        "followFlight": False,
+        "flyDistance": 110.0,
+        "flyHeight": 20.0,
+        "flySampleStride": 4,
+    }
+
+    def apply(self, raw: dict[str, Any]) -> None:
+        nades = raw.setdefault("nades", {})
+        for key, value in self.SETTINGS.items():
+            nades.setdefault(key, value)
+
+
+class SpawnThrowMigration(ConfigMigration):
+    version = 16
+    reason = (
+        "a grenade thrown straight out of spawn is now filmed from inside the freeze "
+        "time, so the aim up before the round starts is in the clip"
+    )
+    SETTINGS = {"spawnWindowSeconds": 4.0, "spawnLeadSeconds": 6.0}
+
+    def apply(self, raw: dict[str, Any]) -> None:
+        nades = raw.setdefault("nades", {})
+        for key, value in self.SETTINGS.items():
+            nades.setdefault(key, value)
+
+
 MIGRATIONS: tuple[ConfigMigration, ...] = (
     Cs2CustomLoaderMigration(),
     Cs2ClipQualityMigration(),
@@ -310,6 +340,8 @@ MIGRATIONS: tuple[ConfigMigration, ...] = (
     SelfUpdateMigration(),
     FlightCameraMigration(),
     GroupedThrowMigration(),
+    ChaseCameraMigration(),
+    SpawnThrowMigration(),
 )
 CURRENT_VERSION = max((migration.version for migration in MIGRATIONS), default=INITIAL_VERSION)
 

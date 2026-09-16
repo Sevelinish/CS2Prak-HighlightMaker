@@ -18,6 +18,7 @@ EPILOG = """examples:
   HighlighterCS2 -demoget                 import new demos from Downloads and the game folders
   HighlighterCS2 match.dem -m nades_smoke every smoke that was thrown
   HighlighterCS2 match.dem -m nades       every grenade of every kind
+  HighlighterCS2 match.dem -m nades_smoke -fly  fly behind each smoke until it opens
 
   HighlighterCS2 --api http                start the plugin API on 127.0.0.1
   HighlighterCS2 --api stdio               speak the plugin API over stdin/stdout
@@ -35,6 +36,7 @@ ONE_FILE_FLAGS = ("-one-file", "--one-file")
 KEEP_GAME_FLAGS = ("-exit0", "--exit0", "--keep-game-open")
 UPDATE_FLAGS = ("-update", "--update")
 DEMO_GET_FLAGS = ("-demoget", "--demoget")
+FLY_FLAGS = ("-fly", "--fly")
 MODE_FLAGS = ("-m", "--mode")
 API_FLAG = "--api"
 API_TRANSPORTS = ("http", "stdio")
@@ -55,6 +57,7 @@ KNOWN_FLAGS = frozenset(
         *KEEP_GAME_FLAGS,
         *UPDATE_FLAGS,
         *DEMO_GET_FLAGS,
+        *FLY_FLAGS,
         *MODE_FLAGS,
     }
 )
@@ -131,6 +134,12 @@ class CommandLine:
             dest="update",
             action="store_true",
             help="check for a newer release, download it and install it",
+        )
+        parser.add_argument(
+            *FLY_FLAGS,
+            dest="fly",
+            action="store_true",
+            help="follow the grenade in flight, from the throw to the detonation",
         )
         parser.add_argument(
             *DEMO_GET_FLAGS,

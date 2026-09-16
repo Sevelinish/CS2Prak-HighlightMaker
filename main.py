@@ -39,6 +39,7 @@ def main() -> int:
         mode_token=arguments.mode,
         one_file=arguments.one_file,
         keep_game_open=arguments.keep_game_open,
+        fly=arguments.fly,
         verbose=arguments.verbose,
     ).run()
 

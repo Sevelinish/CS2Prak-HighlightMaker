@@ -698,7 +698,9 @@ sorted set of callouts in the result, ready for a filter dropdown.
 
 Each grenade carries `id`, `kind`, `roundNumber`, `thrower`, `side`, `throwTick`,
 `detonateTick`, `flightSeconds`, `roundTimeSeconds`, `roundClock`, `landingPlace`, `landing`,
-`throwerPosition`, `throwerAngles`, `setpos` and `setang`.
+`throwerPosition`, `throwerAngles`, `setpos`, `setang` and `fromSpawn`.
+
+`fromSpawn` marks a grenade thrown in the first seconds of a round. Those are filmed with a longer run up that reaches back into the freeze time, since that is where the player lines the throw up.
 
 `camera` is the landing camera the recorder would use: `{mode, reason, position, angles}`.
 `mode` is `flight` when it was taken from the line the grenade flew in on, or `thrower` when

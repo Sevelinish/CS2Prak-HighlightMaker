@@ -5,12 +5,17 @@ from pathlib import Path
 
 from ..config.schema import GameConfig, RecordingConfig
 from ..media.encoders import EncoderProfile
+from .campath import CampathDocument
 from ..plan.models import CameraBeat, ClipSegment, ClipSpec, RecordingPlan
 
 SESSION_SCRIPT_NAME = "highlighter_session"
 SEEK_SCRIPT_NAME = "highlighter_seek"
 LISTEN_SCRIPT_NAME = "highlighter_listen"
 FINISH_SCRIPT_NAME = "highlighter_finish"
+SCRIPT_EXTENSION = ".cfg"
+CAMPATH_EXTENSION = ".xml"
+CAMPATH_SUFFIX = "_fly"
+FLY_SUFFIX = "_flycam"
 HANDOVER_SCRIPT_NAME = "highlighter_handover"
 LISTEN_START_DELAY_SECONDS = 5.0
 MAXIMUM_LISTEN_ENTRIES = 4000
@@ -36,10 +41,11 @@ DEFAULT_SPECTATOR_MODE = SPECTATOR_MODES["first_person"]
 class ScriptFile:
     name: str
     content: str
+    extension: str = SCRIPT_EXTENSION
 
     @property
     def file_name(self) -> str:
-        return f"{self.name}.cfg"
+        return f"{self.name}{self.extension}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,11 +91,13 @@ class MirvScriptBuilder:
         encoder: EncoderProfile,
         game: GameConfig,
         take_directory: Path,
+        script_directory: Path | None = None,
     ) -> None:
         self._recording = recording
         self._encoder = encoder
         self._game = game
         self._take_directory = take_directory
+        self._script_directory = script_directory or Path(".")
 
     def build(self, plan: RecordingPlan, handover: bool = False) -> ScriptBundle:
         schedule = self._flatten(plan)
@@ -114,6 +122,8 @@ class MirvScriptBuilder:
                 ScriptFile(beat.script_name, self._join(list(beat.beat.commands)))
             )
 
+        files.extend(self._chase_files(plan))
+
         if handover and schedule:
             files.append(
                 ScriptFile(HANDOVER_SCRIPT_NAME, self._handover_script(schedule[0]))
@@ -125,6 +135,46 @@ class MirvScriptBuilder:
             handover_script=HANDOVER_SCRIPT_NAME if handover and schedule else "",
             listen_script=LISTEN_SCRIPT_NAME if self._recording.keep_game_open else "",
         )
+
+    def _chase_files(self, plan: RecordingPlan) -> list[ScriptFile]:
+        files: list[ScriptFile] = []
+        for clip in plan.clips:
+            if not clip.camera_path.is_usable:
+                continue
+            files.append(
+                ScriptFile(
+                    name=self._campath_name(clip),
+                    content=CampathDocument.render(clip.camera_path),
+                    extension=CAMPATH_EXTENSION,
+                )
+            )
+            files.append(
+                ScriptFile(self._flycam_name(clip), self._flycam_script(clip))
+            )
+        return files
+
+    def _flycam_script(self, clip: ClipSpec) -> str:
+        document = self._script_directory / f"{self._campath_name(clip)}{CAMPATH_EXTENSION}"
+        return self._join(
+            [
+                "mirv_campath clear",
+                f'mirv_campath load "{self._as_engine_path(document)}"',
+                "mirv_campath offset current#0",
+                "mirv_campath enabled 1",
+            ]
+        )
+
+    @staticmethod
+    def _campath_name(clip: ClipSpec) -> str:
+        return f"highlighter_c{clip.index:02d}{CAMPATH_SUFFIX}"
+
+    @staticmethod
+    def _flycam_name(clip: ClipSpec) -> str:
+        return f"highlighter_c{clip.index:02d}{FLY_SUFFIX}"
+
+    @staticmethod
+    def _chase_clips(plan: RecordingPlan) -> list[ClipSpec]:
+        return [clip for clip in plan.clips if clip.camera_path.is_usable]
 
     @staticmethod
     def _beats(plan: RecordingPlan) -> list[ScheduledBeat]:
@@ -169,6 +219,12 @@ class MirvScriptBuilder:
 
         for beat in self._beats(plan):
             lines.append(f"mirv_cmd addAtTick {beat.beat.tick} exec {beat.script_name}")
+
+        for clip in self._chase_clips(plan):
+            lines.append(
+                f"mirv_cmd addAtTick {clip.camera_path.start_tick} "
+                f"exec {self._flycam_name(clip)}"
+            )
 
         return self._join(lines)
 
@@ -224,6 +280,8 @@ class MirvScriptBuilder:
         following: ScheduledSegment | None,
     ) -> str:
         lines = ["mirv_streams record end"]
+        if entry.clip.camera_path.is_usable:
+            lines.extend(["mirv_campath enabled 0", "mirv_campath clear"])
         if following is not None:
             if self._recording.skip_dead_time:
                 lines.append(self._forward_seek(entry.segment.end_tick, following))

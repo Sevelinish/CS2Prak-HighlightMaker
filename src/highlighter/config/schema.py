@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
-CONFIG_VERSION = 14
+CONFIG_VERSION = 16
 
 DEFAULT_TAG_WEIGHTS: dict[str, float] = {
     "kills_2": 4.0,
@@ -243,6 +243,8 @@ class EncodingConfig:
 @dataclass(slots=True)
 class NadeConfig:
     lead_in_seconds: float = 3.0
+    spawn_window_seconds: float = 4.0
+    spawn_lead_seconds: float = 6.0
     freeze_lead_seconds: float = 1.0
     freeze_seconds: float = 1.0
     zoom_fov: float = 22.5
@@ -250,6 +252,10 @@ class NadeConfig:
     landing_lead_seconds: float = 3.0
     landing_hold_seconds: float = 3.0
     camera_mode: str = "flight"
+    follow_flight: bool = False
+    fly_distance: float = 110.0
+    fly_height: float = 20.0
+    fly_sample_stride: int = 4
     minimum_approach: float = 60.0
     maximum_group_spread: float = 600.0
     landing_distance: float = 220.0
@@ -261,6 +267,12 @@ class NadeConfig:
         default = cls()
         return cls(
             lead_in_seconds=float(_read(source, "leadInSeconds", default.lead_in_seconds)),
+            spawn_window_seconds=float(
+                _read(source, "spawnWindowSeconds", default.spawn_window_seconds)
+            ),
+            spawn_lead_seconds=float(
+                _read(source, "spawnLeadSeconds", default.spawn_lead_seconds)
+            ),
             freeze_lead_seconds=float(
                 _read(source, "freezeLeadSeconds", default.freeze_lead_seconds)
             ),
@@ -276,6 +288,12 @@ class NadeConfig:
                 _read(source, "landingHoldSeconds", default.landing_hold_seconds)
             ),
             camera_mode=str(_read(source, "cameraMode", default.camera_mode)),
+            follow_flight=bool(_read(source, "followFlight", default.follow_flight)),
+            fly_distance=float(_read(source, "flyDistance", default.fly_distance)),
+            fly_height=float(_read(source, "flyHeight", default.fly_height)),
+            fly_sample_stride=int(
+                _read(source, "flySampleStride", default.fly_sample_stride)
+            ),
             minimum_approach=float(
                 _read(source, "minimumApproach", default.minimum_approach)
             ),
@@ -294,6 +312,8 @@ class NadeConfig:
     def to_mapping(self) -> dict[str, Any]:
         return {
             "leadInSeconds": self.lead_in_seconds,
+            "spawnWindowSeconds": self.spawn_window_seconds,
+            "spawnLeadSeconds": self.spawn_lead_seconds,
             "freezeLeadSeconds": self.freeze_lead_seconds,
             "freezeSeconds": self.freeze_seconds,
             "zoomFov": self.zoom_fov,
@@ -301,6 +321,10 @@ class NadeConfig:
             "landingLeadSeconds": self.landing_lead_seconds,
             "landingHoldSeconds": self.landing_hold_seconds,
             "cameraMode": self.camera_mode,
+            "followFlight": self.follow_flight,
+            "flyDistance": self.fly_distance,
+            "flyHeight": self.fly_height,
+            "flySampleStride": self.fly_sample_stride,
             "minimumApproach": self.minimum_approach,
             "maximumGroupSpread": self.maximum_group_spread,
             "landingDistance": self.landing_distance,

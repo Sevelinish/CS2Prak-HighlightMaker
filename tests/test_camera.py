@@ -213,9 +213,17 @@ def test_the_resting_tail_is_not_mistaken_for_the_flight():
 
 
 def test_a_flight_keeps_only_the_last_samples():
-    long_path = flight(*[(float(index), 0.0, 0.0) for index in range(900)])
+    from highlighter.domain.flight import MAXIMUM_SAMPLES
 
-    assert len(long_path.points) == 320
+    long_path = flight(*[(float(index), 0.0, 0.0) for index in range(MAXIMUM_SAMPLES + 400)])
+
+    assert len(long_path.points) == MAXIMUM_SAMPLES
+
+
+def test_a_flight_keeps_enough_samples_for_a_whole_throw():
+    from highlighter.domain.flight import MAXIMUM_SAMPLES
+
+    assert MAXIMUM_SAMPLES >= 10 * 64
 
 
 def test_the_approach_is_capped_at_the_asked_for_distance():

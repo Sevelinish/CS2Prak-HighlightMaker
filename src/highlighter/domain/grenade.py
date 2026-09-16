@@ -109,6 +109,9 @@ class Grenade:
     def setang_command(self) -> str:
         return f"setang {self.thrower_angles.pitch:.2f} {self.thrower_angles.yaw:.2f}"
 
+    def thrown_from_spawn(self, window_seconds: float) -> bool:
+        return self.round_time_seconds <= window_seconds
+
     @property
     def round_clock(self) -> str:
         minutes, seconds = divmod(int(self.round_time_seconds), 60)

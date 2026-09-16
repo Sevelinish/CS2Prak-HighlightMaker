@@ -7,6 +7,7 @@ from ..infrastructure.logging import get_logger
 from .mirv_script import ScriptBundle
 
 SCRIPT_PREFIX = "highlighter_"
+CLEANED_PATTERNS = (f"{SCRIPT_PREFIX}*.cfg", f"{SCRIPT_PREFIX}*.xml")
 
 
 class ScriptWriter:
@@ -58,8 +59,9 @@ class ScriptWriter:
         return True
 
     def cleanup(self) -> None:
-        for stale in self._config_directory.glob(f"{SCRIPT_PREFIX}*.cfg"):
-            stale.unlink(missing_ok=True)
+        for pattern in CLEANED_PATTERNS:
+            for stale in self._config_directory.glob(pattern):
+                stale.unlink(missing_ok=True)
         self._written.clear()
 
     def _mirror(self, file_name: str, content: str) -> None:

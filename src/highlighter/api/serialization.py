@@ -15,6 +15,7 @@ from ..plan.models import RecordingPlan
 HIGHLIGHT_ID_PREFIX = "h"
 GRENADE_ID_PREFIX = "g"
 IDENTIFIER_SEPARATOR = "-"
+SPAWN_WINDOW_SECONDS = 4.0
 
 
 class Identity:
@@ -140,6 +141,7 @@ class GrenadeView:
             "flightSeconds": round(match.ticks_to_seconds(grenade.flight_ticks), 2),
             "roundTimeSeconds": round(grenade.round_time_seconds, 2),
             "roundClock": grenade.round_clock,
+            "fromSpawn": grenade.thrown_from_spawn(SPAWN_WINDOW_SECONDS),
             "landingPlace": grenade.landing_place,
             "landing": grenade.landing.to_mapping(),
             "throwerPosition": grenade.thrower_position.to_mapping(),

@@ -266,7 +266,11 @@ class RecordingSession:
         handover: bool,
     ) -> ScriptBundle:
         return MirvScriptBuilder(
-            self._config.recording, encoder, self._config.game, take_directory
+            self._config.recording,
+            encoder,
+            self._config.game,
+            take_directory,
+            self._installation.config_directory,
         ).build(plan, handover=handover)
 
     def _capture(

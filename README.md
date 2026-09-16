@@ -26,6 +26,7 @@ demo.dem  ->  parse  ->  detect  ->  table in the console  ->  pick moments
 * `-exit0` keeps the game open so a second batch skips the CS2 startup
 * `-update` installs the newest release on its own and keeps your clips and settings
 * `-demoget` finds new demos in Downloads, unpacks them and files them under a name you choose
+* `-fly` puts the camera behind the grenade and follows it from the throw to the detonation
 * A JSON plugin API, written for CS2Prak-Launcher, that drives the whole pipeline from another program
 
 ## Quick start
@@ -68,6 +69,7 @@ The result lands in `dist/HighlighterCS2/`. Rebuilding leaves the downloaded too
 | `HighlighterCS2.exe match.dem -p 76561198000000000` | The same by SteamID64 |
 | `HighlighterCS2.exe match.dem -m nades_smoke` | Every smoke that was thrown, instead of highlights |
 | `HighlighterCS2.exe match.dem -m nades` | Every grenade of every kind |
+| `HighlighterCS2.exe match.dem -m nades_smoke -fly` | Fly behind each smoke until it opens |
 | `HighlighterCS2.exe match.dem -one-file` | Join the picked moments into a single video |
 | `HighlighterCS2.exe match.dem -exit0` | Leave the game running so the next batch skips the startup |
 | `HighlighterCS2.exe -update` | Install the newest release, keeping clips and settings |
@@ -245,6 +247,44 @@ clamp, which used to happen when a grenade thrown at the end of one round detona
 next and landed a clip two seconds of empty footage away from the throw. And the plan is checked
 to hold no overlapping segments at all.
 
+### Flying with the grenade
+
+```bash
+HighlighterCS2.exe match.dem -m nades_smoke -fly
+```
+
+Instead of standing still and cutting to the landing spot, the camera sits behind the grenade
+and follows it the whole way, from the moment it leaves the hand until it opens.
+
+HLAE has a camera path system for exactly this, but `mirv_campath add` only captures wherever
+the camera happens to be, so a path cannot be scripted keyframe by keyframe from the console.
+What it does have is `mirv_campath load`, which reads a path from an XML file. So the recorder
+writes the path itself:
+
+```xml
+<campath positionInterp="cubic" rotationInterp="sCubic" fovInterp="cubic" hold="true">
+  <points>
+    <p t="0.0000" x="-160.38" y="-1308.22" z="603.61" rx="0" ry="-0.34" rz="72.81" fov="90"/>
+    ...
+  </points>
+</campath>
+```
+
+One keyframe every `flySampleStride` ticks, each one placed `flyDistance` back along the path
+the grenade had already travelled and raised by `flyHeight`, looking at where the grenade is at
+that moment. Cubic interpolation smooths the rest. At the throw the recorder runs
+`mirv_campath load`, then `mirv_campath offset current#0`, which pins the first keyframe to the
+current moment so the path does not depend on absolute demo time, and then
+`mirv_campath enabled 1`. The take ends with `mirv_campath enabled 0` and a clear.
+
+Putting the camera on ground the grenade has already flown through is the same trick as
+[Choosing the angle](#choosing-the-angle), and it has the same benefit: that space is known to
+be open, because the grenade was just there. The only unproven part is the `flyHeight` lift.
+
+In this mode the flight is never trimmed and the clip is one continuous take, since the flight
+is the thing being filmed. HLAE needs at least four keyframes to enable a path, so a grenade
+that barely moved falls back to the normal landing shot.
+
 ### Choosing the angle
 
 The landing camera used to sit on the straight line from the landing spot back to the thrower.
@@ -270,6 +310,21 @@ and where it applied the camera moved a median of 80 units from where it used to
 
 This is a much better guess, not a guarantee. Nothing here reads the map geometry, so a shot can
 still be blocked. `nades.cameraMode` set to `thrower` restores the old behaviour.
+
+### Throws straight out of spawn
+
+Plenty of smokes are thrown in the first second of a round. The player lines the throw up while
+still frozen, walks into place, and releases the moment the round starts. Clipping those from the
+round start meant the run up was missing: on the test demo a spawn throw got between 0.4 and 2.1
+seconds of lead in, none of it showing the aim.
+
+A throw made within `spawnWindowSeconds` of the round starting is recognised as a spawn throw and
+gets `spawnLeadSeconds` of run up instead, reaching back into the freeze time where the aiming
+actually happens. The clip still never crosses into the round before, so a short freeze time
+simply shortens the run up.
+
+That is not a rare case. On the test demo 39 of 99 smokes were thrown inside the first four
+seconds of a round.
 
 ### How a throw is filmed
 
@@ -305,6 +360,8 @@ The landing camera is placed `landingDistance` units from the detonation point, 
 | Key | Default | What it does |
 | --- | --- | --- |
 | `leadInSeconds` | `3.0` | How long before the throw the clip starts |
+| `spawnWindowSeconds` | `4.0` | A throw this soon after the round starts counts as a spawn throw |
+| `spawnLeadSeconds` | `6.0` | Run up for a spawn throw, reaching back into the freeze time |
 | `freezeLeadSeconds` | `1.0` | How long before the throw the zoom hold begins |
 | `freezeSeconds` | `1.0` | How long the zoomed view is held |
 | `zoomFov` | `22.5` | Field of view while zoomed, lower means closer |
@@ -312,6 +369,10 @@ The landing camera is placed `landingDistance` units from the detonation point, 
 | `landingLeadSeconds` | `3.0` | How much of the flight is kept before detonation when a long flight is trimmed |
 | `landingHoldSeconds` | `3.0` | How long the camera stays there after detonation |
 | `cameraMode` | `flight` | `flight` follows the line the grenade flew in on, `thrower` uses the throw line |
+| `followFlight` | `false` | Fly behind the grenade, same as `-fly` |
+| `flyDistance` | `110.0` | How far behind the grenade the chase camera sits |
+| `flyHeight` | `20.0` | How high above its path the chase camera sits |
+| `flySampleStride` | `4` | How often the flight is sampled into a keyframe |
 | `minimumApproach` | `60.0` | How much clean flight is needed before that direction is trusted |
 | `maximumGroupSpread` | `600.0` | How far apart landings can be and still share one shot |
 | `landingDistance` | `220.0` | Camera distance from the detonation point |

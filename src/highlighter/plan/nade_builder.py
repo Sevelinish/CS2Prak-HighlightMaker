@@ -6,6 +6,7 @@ from typing import Sequence
 
 from ..config.schema import NadeConfig, RecordingConfig
 from ..domain.camera import LandingCameraDirector, LandingShot
+from ..domain.chase import ChaseCameraDirector, ChasePath
 from ..domain.grenade import Grenade
 from ..domain.match import Match
 from .grouping import OverlapGrouper, Window
@@ -51,7 +52,8 @@ class NadePlanBuilder:
 
         for index, group in enumerate(groups, start=1):
             ordered = sorted(group, key=lambda item: item.throw_tick)
-            segments = self._segments(match, ordered, rounds_by_number)
+            chase = self._chase_path(match, ordered)
+            segments = self._segments(match, ordered, rounds_by_number, chase)
             plan.clips.append(
                 ClipSpec(
                     index=index,
@@ -63,8 +65,9 @@ class NadePlanBuilder:
                     segments=segments,
                     action_start_tick=ordered[0].throw_tick,
                     action_end_tick=max(item.detonate_tick for item in ordered),
-                    beats=self._beats(match, ordered, len(segments) > 1),
-                    note=self._note(ordered),
+                    beats=self._beats(match, ordered, len(segments) > 1, chase),
+                    camera_path=chase,
+                    note=self._note(ordered, chase),
                 )
             )
 
@@ -83,14 +86,44 @@ class NadePlanBuilder:
     def _clip_start(
         self, match: Match, throw_tick: int, grenade: Grenade, rounds_by_number
     ) -> int:
-        start = throw_tick - match.seconds_to_ticks(self._nades.lead_in_seconds)
         round_ = rounds_by_number.get(grenade.round_number)
-        if round_ is not None and throw_tick >= round_.freeze_end_tick:
-            start = max(start, round_.freeze_end_tick)
-        return max(0, start)
+        if round_ is None:
+            return max(0, throw_tick - match.seconds_to_ticks(self._nades.lead_in_seconds))
+
+        if self._is_spawn_throw(grenade):
+            lead = max(self._nades.lead_in_seconds, self._nades.spawn_lead_seconds)
+            floor = self._freeze_start(rounds_by_number, grenade.round_number)
+        else:
+            lead = self._nades.lead_in_seconds
+            floor = round_.freeze_end_tick if throw_tick >= round_.freeze_end_tick else 0
+
+        return max(0, floor, throw_tick - match.seconds_to_ticks(lead))
+
+    def _is_spawn_throw(self, grenade: Grenade) -> bool:
+        return grenade.thrown_from_spawn(self._nades.spawn_window_seconds)
+
+    @staticmethod
+    def _freeze_start(rounds_by_number, round_number: int) -> int:
+        previous = rounds_by_number.get(round_number - 1)
+        return previous.end_tick if previous is not None else 0
+
+    def _chase_path(self, match: Match, group: Sequence[Grenade]) -> ChasePath:
+        if not self._nades.follow_flight:
+            return ChasePath()
+
+        return ChaseCameraDirector(
+            distance=self._nades.fly_distance,
+            height=self._nades.fly_height,
+            stride=self._nades.fly_sample_stride,
+            tick_rate=match.tick_rate,
+        ).follow(group[0].flight, hold_seconds=self._nades.landing_hold_seconds)
 
     def _segments(
-        self, match: Match, group: Sequence[Grenade], rounds_by_number
+        self,
+        match: Match,
+        group: Sequence[Grenade],
+        rounds_by_number,
+        chase: ChasePath = ChasePath(),
     ) -> tuple[ClipSegment, ...]:
         first = group[0]
         start = self._clip_start(match, first.throw_tick, first, rounds_by_number)
@@ -104,7 +137,7 @@ class NadePlanBuilder:
             self._nades.landing_cut_seconds
         )
 
-        if not self._worth_skipping(throw_end, landing_start):
+        if chase.is_usable or not self._worth_skipping(throw_end, landing_start):
             return (
                 self._segment(match, 1, start, max(end, start + match.tick_rate), group),
             )
@@ -170,6 +203,7 @@ class NadePlanBuilder:
         match: Match,
         group: Sequence[Grenade],
         landing_is_own_segment: bool,
+        chase: ChasePath = ChasePath(),
     ) -> tuple[CameraBeat, ...]:
         freeze_start = group[0].throw_tick - match.seconds_to_ticks(
             self._nades.freeze_lead_seconds
@@ -190,7 +224,7 @@ class NadePlanBuilder:
             ),
         ]
 
-        if not landing_is_own_segment:
+        if not landing_is_own_segment and not chase.is_usable:
             beats.append(
                 CameraBeat(
                     tick=self._landing_cut_tick(match, group),
@@ -221,7 +255,9 @@ class NadePlanBuilder:
         places = _unique(item.landing_place for item in group)
         return (*kinds, *places)
 
-    def _note(self, group: Sequence[Grenade]) -> str:
+    def _note(self, group: Sequence[Grenade], chase: ChasePath = ChasePath()) -> str:
+        if chase.is_usable:
+            return self._chase_note(group, chase)
         shot = self._landing_shot(group)
         lines = [
             f"{item.kind.label} into {item.landing_place} | "
@@ -231,6 +267,19 @@ class NadePlanBuilder:
         if len(group) > 1:
             lines.insert(0, f"{len(group)} throws filmed as one clip")
         lines.append(f"landing camera {shot.mode}: {shot.reason}")
+        return " | ".join(lines)
+
+    @staticmethod
+    def _chase_note(group: Sequence[Grenade], chase: ChasePath) -> str:
+        followed = group[0]
+        lines = [
+            f"{followed.kind.label} into {followed.landing_place} | "
+            f"{followed.setpos_command}; {followed.setang_command}",
+            f"camera flies behind it for {chase.seconds:.1f}s, "
+            f"{len(chase.keyframes)} keyframes",
+        ]
+        if len(group) > 1:
+            lines.append(f"{len(group)} throws overlap, the camera follows the first")
         return " | ".join(lines)
 
     def _clip_name(self, index: int, group: Sequence[Grenade]) -> str:

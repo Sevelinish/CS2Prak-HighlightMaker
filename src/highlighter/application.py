@@ -55,6 +55,7 @@ class Application:
         mode_token: str | None = None,
         one_file: bool = False,
         keep_game_open: bool = False,
+        fly: bool = False,
         verbose: bool = False,
     ) -> None:
         self._paths = ApplicationPaths.discover()
@@ -64,6 +65,7 @@ class Application:
         self._mode = RunMode.parse(mode_token)
         self._one_file = one_file
         self._keep_game_open = keep_game_open
+        self._fly = fly
         self._verbose = verbose
         self._logger = LoggingConfigurator(self._paths.logs, verbose).configure()
         self._warm_session: WarmSession | None = None
@@ -99,10 +101,18 @@ class Application:
             config.recording.single_file = True
         if self._keep_game_open:
             config.recording.keep_game_open = True
+        if self._fly:
+            config.nades.follow_flight = True
         if repository.migrated:
             self._console.print(
                 f"[muted]config.json upgraded to version {CONFIG_VERSION}[/muted]"
             )
+        if self._fly and not self._mode.records_grenades:
+            self._console.print(
+                "[warning]-fly only applies to grenade modes, "
+                "add -m nades or -m nades_smoke[/warning]"
+            )
+
         installation = Cs2Installation.discover(config.paths.cs2_directory)
         reporter = StepReporter(self._console, self._total_steps())
 

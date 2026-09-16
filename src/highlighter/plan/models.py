@@ -4,7 +4,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-PLAN_VERSION = 4
+from ..domain.chase import ChasePath
+
+PLAN_VERSION = 5
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,6 +71,7 @@ class ClipSpec:
     action_start_tick: int
     action_end_tick: int
     beats: tuple[CameraBeat, ...] = ()
+    camera_path: ChasePath = ChasePath()
     note: str = ""
 
     @property
@@ -105,6 +108,10 @@ class ClipSpec:
             "durationSeconds": round(self.duration_seconds, 2),
             "segments": [segment.to_mapping() for segment in self.segments],
             "beats": [beat.to_mapping() for beat in self.beats],
+            "cameraPath": {
+                "startTick": self.camera_path.start_tick,
+                "keyframes": self.camera_path.to_mapping(),
+            },
             "note": self.note,
         }
 
