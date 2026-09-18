@@ -23,6 +23,7 @@ class CandidateKind(Enum):
     FLAG = "flag"
     VALUE = "value"
     DEMO = "demo"
+    PLAYER = "player"
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,7 +155,8 @@ OPTIONS: tuple[Option, ...] = (
 COMMANDS: tuple[ShellCommand, ...] = (
     ShellCommand(("run",), "record with the arguments that follow, or with none at all"),
     ShellCommand(("help", "?"), "show what can be typed here"),
-    ShellCommand(("demos",), "list the demos found in the search folders"),
+    ShellCommand(("demos",), "list the demos found, with map and player count"),
+    ShellCommand(("players",), "list the nicknames read out of a demo"),
     ShellCommand(("clear", "cls"), "wipe the screen"),
     ShellCommand(("version",), "print the installed version"),
     ShellCommand(("exit", "quit"), "leave the shell"),

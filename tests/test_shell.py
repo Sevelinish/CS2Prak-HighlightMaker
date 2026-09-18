@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-import os
+import io
 from pathlib import Path
 
 import pytest
 
 from highlighter.cli import CommandLine, CommandLineError, CommandLineStop
+from highlighter.library import PlayerHint
+from highlighter.presentation.theme import HIGHLIGHTER_THEME
 from highlighter.shell.context import LineContext
 from highlighter.shell.document import Document
 from highlighter.shell.grammar import Grammar
@@ -32,6 +34,22 @@ def at_end(text: str) -> Document:
 
 def ghost_for(text: str, demos: tuple[str, ...] = DEMOS) -> Suggestion:
     return Suggester(demos=lambda: demos).suggest(at_end(text))
+
+
+ROSTER = (
+    PlayerHint("crona999", "started CT"),
+    PlayerHint("-n1clxe", "started T"),
+    PlayerHint("OpiLopi", "started T"),
+)
+
+
+def roster_for(demo_name: str) -> tuple[PlayerHint, ...]:
+    return ROSTER if demo_name == "mirage17.dem" else ()
+
+
+def player_ghost(text: str) -> Suggestion:
+    suggester = Suggester(demos=lambda: DEMOS, players=roster_for)
+    return suggester.suggest(at_end(text))
 
 
 class ScriptedReader:
@@ -380,6 +398,7 @@ class RecordingRunner:
 class StillCatalogue:
     def __init__(self) -> None:
         self.refreshed = 0
+        self.asked_for: list[str] = []
 
     def refresh(self) -> None:
         self.refreshed += 1
@@ -390,14 +409,34 @@ class StillCatalogue:
     def names(self) -> tuple[str, ...]:
         return ()
 
+    def waiting(self) -> int:
+        return 0
 
-def build_router(runner: RecordingRunner, renderer: SilentRenderer | None = None):
+    def forget_missing(self) -> int:
+        return 0
+
+    def catch_up(self, budget_seconds: float | None = None):
+        return None
+
+    def profile_for(self, demo: Path):
+        return None
+
+    def players(self, demo_name: str = "") -> tuple[PlayerHint, ...]:
+        self.asked_for.append(demo_name)
+        return ROSTER
+
+
+def build_router(
+    runner: RecordingRunner,
+    renderer: SilentRenderer | None = None,
+    catalogue: StillCatalogue | None = None,
+):
     from rich.console import Console
 
     return CommandRouter(
-        console=Console(file=open(os.devnull, "w", encoding="utf-8"), no_color=True),
+        console=Console(file=io.StringIO(), theme=HIGHLIGHTER_THEME, no_color=True),
         runner=runner,
-        catalogue=StillCatalogue(),
+        catalogue=catalogue or StillCatalogue(),
         renderer=renderer or SilentRenderer(),
     )
 
@@ -522,3 +561,65 @@ def test_the_cursor_is_put_back_after_the_typed_text():
     renderer.render(at_end("-f"), Suggestion(completion="ly"))
 
     assert stream.text.endswith(f"{CARRIAGE_RETURN}{ESCAPE}[4C")
+
+
+def test_the_roster_of_the_named_demo_is_offered():
+    offered = [item.text for item in player_ghost("mirage17.dem -p ").candidates]
+
+    assert offered == ["crona999", "-n1clxe", "OpiLopi"]
+
+
+def test_a_nickname_is_completed_from_the_demo():
+    assert player_ghost("mirage17.dem -p cro").completion == "na999"
+
+
+def test_the_side_of_a_single_match_is_shown():
+    assert player_ghost("mirage17.dem -p cro").hint == "started CT"
+
+
+def test_a_dashed_nickname_is_found_without_typing_the_dash():
+    suggestion = player_ghost("mirage17.dem -p n1c")
+
+    assert [item.text for item in suggestion.candidates] == ["-n1clxe"]
+    assert suggestion.hint == "tab for -n1clxe, started T"
+
+
+def test_a_dashed_nickname_is_completed_when_the_dash_is_typed():
+    assert player_ghost("mirage17.dem -p -n1").completion == "clxe"
+
+
+def test_an_unknown_demo_offers_no_roster():
+    assert player_ghost("nuke04.dem -p ").candidates == ()
+
+
+def test_the_demo_is_found_wherever_it_sits_on_the_line():
+    offered = [item.text for item in player_ghost("-one-file mirage17.dem -p ").candidates]
+
+    assert offered == ["crona999", "-n1clxe", "OpiLopi"]
+
+
+def test_a_dashed_nickname_does_not_count_as_the_demo():
+    offered = [
+        item.text for item in player_ghost("mirage17.dem -p -n1clxe -m ").candidates
+    ]
+
+    assert "highlights" in offered
+
+
+def test_the_players_command_asks_for_that_demo():
+    runner = RecordingRunner()
+    catalogue = StillCatalogue()
+
+    result = build_router(runner, catalogue=catalogue).route("players mirage17.dem")
+
+    assert catalogue.asked_for == ["mirage17.dem"]
+    assert runner.calls == []
+    assert result.should_exit is False
+
+
+def test_the_players_command_without_a_demo_asks_for_everything():
+    catalogue = StillCatalogue()
+
+    build_router(RecordingRunner(), catalogue=catalogue).route("players")
+
+    assert catalogue.asked_for == [""]

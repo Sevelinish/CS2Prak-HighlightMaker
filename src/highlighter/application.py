@@ -20,6 +20,7 @@ from .game.installation import Cs2Installation
 from .infrastructure.errors import HighlighterError
 from .infrastructure.logging import LoggingConfigurator
 from .infrastructure.paths import ApplicationPaths
+from .library import DemoLibrary
 from .media.assembler import AssembledClip
 from .media.folder_opener import FolderOpener
 from .media.reel import Reel
@@ -73,6 +74,7 @@ class Application:
         self._show_banner = show_banner
         self._logger = LoggingConfigurator(self._paths.logs, verbose).configure()
         self._warm_session: WarmSession | None = None
+        self._library: DemoLibrary | None = None
 
     def run(self) -> int:
         if self._show_banner:
@@ -127,6 +129,7 @@ class Application:
             )
 
         installation = Cs2Installation.discover(config.paths.cs2_directory)
+        self._library = self._open_library(config)
         reporter = StepReporter(self._console, self._total_steps())
 
         demo_path = self._resolve_demo(config, installation)
@@ -170,7 +173,27 @@ class Application:
                 f"No .dem files found. Put demos in "
                 f"{self._paths.resolve(config.paths.demo_directory)}"
             )
-        return DemoPicker(self._console).pick(demos)
+        return DemoPicker(self._console, self._known_profile).pick(demos)
+
+    def _open_library(self, config: ApplicationConfig) -> DemoLibrary | None:
+        try:
+            return DemoLibrary(self._paths.resolve(config.paths.work_directory))
+        except OSError:
+            self._logger.debug("The demo index is unavailable", exc_info=True)
+            return None
+
+    def _known_profile(self, demo: Path):
+        if self._library is None:
+            return None
+        return self._library.profile_for(demo)
+
+    def _remember(self, match: Match) -> None:
+        if self._library is None:
+            return
+        try:
+            self._library.remember_match(match)
+        except OSError:
+            self._logger.debug("The demo index could not be updated", exc_info=True)
 
     def _build_locator(
         self, config: ApplicationConfig, installation: Cs2Installation
@@ -282,6 +305,7 @@ class Application:
         except BaseException:
             reporter.fail()
             raise
+        self._remember(match)
         reporter.done(
             f"{match.map_name}, {match.round_count} rounds, {len(match.players)} players"
         )

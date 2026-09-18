@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Sequence
+from typing import Callable, Sequence
 
 from rich.console import Console
 from rich.table import Table
 
+from ..library import DemoProfile, PlayerHint
 from ..version import __version__
 from .grammar import Grammar
 
@@ -23,7 +24,7 @@ KEYS = (
     ("Ctrl+C", "clear the line, or leave when the line is empty"),
 )
 
-DEMO_COLUMN_WIDTH = 46
+DEMO_COLUMN_WIDTH = 40
 
 
 class HelpView:
@@ -98,23 +99,77 @@ class DemoListView:
     def __init__(self, console: Console) -> None:
         self._console = console
 
-    def render(self, demos: Sequence[Path]) -> None:
+    def render(
+        self,
+        demos: Sequence[Path],
+        profile_for: Callable[[Path], DemoProfile | None] | None = None,
+    ) -> None:
         if not demos:
             self._console.print("[warning]No demos found in the search folders[/warning]")
             return
 
+        lookup = profile_for or (lambda demo: None)
         table = Table(
             title="[accent]Demos the prompt can complete[/accent]",
+            title_justify="left",
+            header_style="accent",
+            box=None,
+            padding=(0, 2, 0, 0),
+        )
+        table.add_column(
+            "Demo",
+            style="brand",
+            no_wrap=True,
+            max_width=DEMO_COLUMN_WIDTH,
+            overflow="ellipsis",
+        )
+        table.add_column("Map", style="muted", no_wrap=True)
+        table.add_column("Players", style="muted", justify="right")
+        table.add_column("Folder", style="muted", no_wrap=True)
+
+        self._console.print()
+        for demo in demos:
+            profile = lookup(demo)
+            table.add_row(
+                demo.name,
+                profile.map_name if profile is not None else "",
+                str(len(profile.players)) if profile is not None else "",
+                demo.parent.name,
+            )
+        self._console.print(table)
+        self._console.print()
+
+
+class PlayerListView:
+    def __init__(self, console: Console) -> None:
+        self._console = console
+
+    def render(self, players: Sequence[PlayerHint], demo_name: str = "") -> None:
+        if not players:
+            self._console.print(
+                "[warning]No nicknames known yet, run [/warning]"
+                "[brand]demos[/brand][warning] to read them[/warning]"
+            )
+            return
+
+        scope = f" in {demo_name}" if demo_name else " across every demo read so far"
+        table = Table(
+            title=f"[accent]Players{scope}[/accent]",
             title_justify="left",
             show_header=False,
             box=None,
             padding=(0, 2, 0, 0),
         )
-        table.add_column(style="brand", no_wrap=True, max_width=DEMO_COLUMN_WIDTH)
-        table.add_column(style="muted", overflow="ellipsis")
+        table.add_column(style="brand", no_wrap=True)
+        table.add_column(style="muted", no_wrap=True, overflow="ellipsis")
+        table.add_column(style="muted", no_wrap=True)
 
         self._console.print()
-        for demo in demos:
-            table.add_row(demo.name, str(demo.parent))
+        for hint in players:
+            table.add_row(hint.name, hint.note, str(hint.steam_id64 or ""))
         self._console.print(table)
+        self._console.print(
+            "[muted]Type one after [/muted][brand]-p[/brand][muted], "
+            "or press Tab there to walk through them[/muted]"
+        )
         self._console.print()

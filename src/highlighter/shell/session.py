@@ -14,6 +14,7 @@ from .catalogue import DemoCatalogue
 from .history import HISTORY_FILE_NAME, CommandHistory
 from .plain import PlainPrompt
 from .prompt import LinePrompt
+from .reading import NewDemoReader
 from .reader import create_key_reader
 from .renderer import LineRenderer
 from .router import CommandRouter
@@ -76,7 +77,11 @@ class ShellSession:
         return LinePrompt(
             reader=create_key_reader(),
             renderer=self._renderer,
-            suggester=Suggester(demos=self._catalogue.names, history=self._history),
+            suggester=Suggester(
+                demos=self._catalogue.names,
+                history=self._history,
+                players=self._catalogue.players,
+            ),
             history=self._history,
         )
 
@@ -87,6 +92,8 @@ class ShellSession:
         self._console.print(INTRO)
         self._console.print(GUIDE)
         self._console.print()
+        if NewDemoReader(self._console, self._catalogue).read().did_work:
+            self._console.print()
 
     def _history_file(self) -> Path | None:
         try:

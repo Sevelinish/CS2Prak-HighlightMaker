@@ -31,6 +31,7 @@ demo.dem  ->  parse  ->  detect  ->  table in the console  ->  pick moments
 * `-fly` puts the camera behind the grenade and follows it from the throw to the detonation
 * `-enemy` adds the same moment from each victim's eyes to the end of the clip
 * A prompt inside the program: start the exe, type the arguments there, with grey suggestions as you type
+* Every new demo is read once and remembered: its map and its roster, so `-p` completes real nicknames
 * A JSON plugin API, written for CS2Prak-Launcher, that drives the whole pipeline from another program
 
 ## Quick start
@@ -111,6 +112,8 @@ Nothing is deleted, so the separate clips stay available for editing. Joining ru
 [Keeping the game open](#keeping-the-game-open).
 
 **About `-demoget`.** Also spelled `--demoget`. See [Importing demos](#importing-demos).
+Imported demos are picked up by the prompt like any other, so their maps and nicknames are read
+on the next start.
 
 **About `-update`.** Also spelled `--update`. See [Updating](#updating).
 
@@ -157,6 +160,7 @@ is offered depends on where the cursor is:
 | `-m ` | `<mode>` | the same, with the seven modes listed on the right |
 | `-m nades_` | `smoke` | the value is completed from the real mode list |
 | `mirage17.dem ` | `<flag>` | the demo is set, what follows is a flag |
+| `mirage17.dem -p cro` | `na999` | that nickname is in that demo's roster |
 
 The text on the right of the line is a short explanation: the description of the flag when one
 matches, or the list of matches when several do. A flag that is already on the line is not
@@ -167,6 +171,47 @@ program is waiting for. Grey text that is not in brackets is a real completion a
 
 When nothing in the grammar matches, the last line you typed that starts the same way is offered
 instead, so a long command is retyped by its first few characters.
+
+### Nicknames
+
+Looking a nickname up in the scoreboard and typing it by hand is the slowest part of a run, so
+the program keeps a small book of what it has read.
+
+The first time a demo is seen, its header and its player table are read once. That takes well
+under a second and gives two things: the map, and the roster with SteamID64 and starting side.
+It is kept in `work/demo_index.json` against the file name and size, so a demo is never read
+twice, and a file that changed counts as new.
+
+That book is filled in three places. The prompt reads whatever is new when it starts, and says
+so:
+
+```
+Reading 3 new demo(s) for the map and the nicknames
+[+] 3 demo(s) read, 30 nickname(s)  1.9s
+```
+
+`demos` reads anything still missing before it prints the table. And every recording run writes
+down the demo it just parsed, since the roster is already in hand by then.
+
+After that, `-p` completes real names:
+
+```
+> mirage17.dem -p cro
+                  na999      started CT
+```
+
+Type nothing after `-p` and the hint lists the whole roster, with Tab walking through it. Type
+part of a name and it is completed. Names that start with a dash, which CS2 players are fond of,
+are found without typing the dash: `n1c` finds `-n1clxe`, and since a suggestion like that cannot
+continue what you typed, the hint says `tab for -n1clxe` instead of showing grey text.
+
+Which roster is offered depends on the line. Name a demo and you get that demo's players, with
+the side each of them started on. Do not name one and you get every player the program has ever
+read, each one noted with the demo it came from. If the demo on the line has never been read, it
+is read right then, once.
+
+`players` prints the same list as a table with SteamID64 next to each name, for when you want to
+look before you type.
 
 ### Keys
 
@@ -190,7 +235,8 @@ instead, so a long command is retyped by its first few characters.
 | --- | --- |
 | `run` | records with the arguments that follow, or with none at all |
 | `help`, `?` | prints every argument, key and example |
-| `demos` | lists the demos the prompt can complete, with their folders |
+| `demos` | reads any new demos, then lists them with map and player count |
+| `players [demo]` | lists the nicknames read out of a demo, or out of all of them |
 | `clear`, `cls` | wipes the screen |
 | `version` | prints the installed version |
 | `exit`, `quit` | leaves |
@@ -217,7 +263,9 @@ In a console that cannot do inline colour the prompt still runs and still takes 
 arguments, only without the grey suggestions. It says so on the first line.
 
 The lines you type are kept in `work/shell_history.txt`, the last 200 of them, so Up still
-reaches yesterday's commands.
+reaches yesterday's commands. What was read out of your demos is kept next to it in
+`work/demo_index.json`. Deleting either file costs nothing: the history starts over, and the
+demos are read again the next time they are needed.
 
 ## What a run looks like
 
@@ -1033,6 +1081,12 @@ src/highlighter/
 ├── cli.py               command line parsing
 ├── entrypoint.py        turning parsed arguments into a run
 ├── version.py           the version everything reports and compares against
+├── library/             what the program remembers about each demo
+│   ├── profile.py       the map, the roster and how a demo is keyed
+│   ├── inspector.py     reading a header and a player table, or a parsed match
+│   ├── index.py         the book on disk, work/demo_index.json
+│   ├── librarian.py     reading only what is new, within a time budget
+│   └── directory.py     library.py  the nicknames the prompt offers
 ├── shell/               the prompt the exe opens when it is started bare
 │   ├── grammar.py       the arguments, values and words the prompt knows
 │   ├── suggester.py     what to offer for the word under the cursor
@@ -1108,7 +1162,7 @@ To add your own detection rule: subclass `HighlightRule`, set `name`, add the cl
 .venv\Scripts\python -m pytest
 ```
 
-Over six hundred tests. They cover argument parsing, demo lookup, detection and scoring, segmentation, the guard against seek loops, mirv script generation, encoder selection, config migrations, HLAE install integrity, watching the game process, and the prompt with its line editing and suggestions.
+Over seven hundred tests. They cover argument parsing, demo lookup, detection and scoring, segmentation, the guard against seek loops, mirv script generation, encoder selection, config migrations, HLAE install integrity, watching the game process, the demo index and its nickname lookup, and the prompt with its line editing and suggestions.
 
 ## Requirements
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, Protocol, Sequence
 
+from ..library import PlayerHint
 from .context import LineContext
 from .document import Document
 from .grammar import (
@@ -12,6 +13,7 @@ from .grammar import (
     CandidateKind,
     Grammar,
     Option,
+    ValueKind,
 )
 
 EMPTY_LINE_HINT = "a demo name, a flag, or help"
@@ -19,6 +21,7 @@ READY_HINT = "add a flag, or press Enter to record"
 ANY_FLAG_PREFIX = "-"
 UNKNOWN_FLAG_HINT = "no flag starts like that"
 HISTORY_HINT = "from history"
+TAB_HINT = "tab for"
 MATCH_PREVIEW_LIMIT = 4
 
 
@@ -48,10 +51,12 @@ class Suggester:
         grammar: Grammar | None = None,
         demos: Callable[[], Sequence[str]] | None = None,
         history: HistorySource | None = None,
+        players: Callable[[str], Sequence[PlayerHint]] | None = None,
     ) -> None:
         self._grammar = grammar or Grammar()
         self._demos = demos or (lambda: ())
         self._history = history
+        self._players = players or (lambda demo_name: ())
 
     def suggest(self, document: Document) -> Suggestion:
         suggestion = self._from_grammar(LineContext.of(document))
@@ -77,7 +82,7 @@ class Suggester:
         return option
 
     def _value_suggestion(self, option: Option, context: LineContext) -> Suggestion:
-        candidates = self._grammar.value_candidates(option, context.word)
+        candidates = self._value_candidates(option, context)
         if not context.word:
             return Suggestion(
                 placeholder=option.placeholder,
@@ -87,6 +92,20 @@ class Suggester:
         if candidates:
             return self._built(candidates, context.word)
         return Suggestion(hint=option.summary)
+
+    def _value_candidates(
+        self, option: Option, context: LineContext
+    ) -> tuple[Candidate, ...]:
+        if option.value is ValueKind.PLAYER:
+            return self._player_candidates(context)
+        return self._grammar.value_candidates(option, context.word)
+
+    def _player_candidates(self, context: LineContext) -> tuple[Candidate, ...]:
+        return tuple(
+            Candidate(text=hint.name, summary=hint.note, kind=CandidateKind.PLAYER)
+            for hint in self._players(self._named_demo(context))
+            if hint.starts_with(context.word)
+        )
 
     def _flag_suggestion(self, context: LineContext) -> Suggestion:
         candidates = self._grammar.flag_candidates(context.word, context.other_flags())
@@ -137,6 +156,14 @@ class Suggester:
         )
 
     def _demo_already_given(self, context: LineContext) -> bool:
+        return bool(self._positionals(context))
+
+    def _named_demo(self, context: LineContext) -> str:
+        found = self._positionals(context)
+        return found[0] if found else ""
+
+    def _positionals(self, context: LineContext) -> list[str]:
+        found: list[str] = []
         skip_next = False
         for position, token in enumerate(context.tokens):
             if token.start == context.word_start:
@@ -150,8 +177,8 @@ class Suggester:
                 continue
             if position == 0 and self._grammar.command_for(token.text) is not None:
                 continue
-            return True
-        return False
+            found.append(token.text)
+        return found
 
     def _with_history(self, document: Document, suggestion: Suggestion) -> Suggestion:
         if self._history is None or not document.text:
@@ -171,17 +198,26 @@ class Suggester:
         completion = chosen.text[len(word) :] if chosen.text.startswith(word) else ""
         return Suggestion(
             completion=completion,
-            hint=cls._hint(candidates),
+            hint=cls._hint(candidates, word, completion),
             candidates=candidates,
         )
 
-    @staticmethod
-    def _hint(candidates: tuple[Candidate, ...]) -> str:
+    @classmethod
+    def _hint(
+        cls, candidates: tuple[Candidate, ...], word: str = "", completion: str = ""
+    ) -> str:
         if not candidates:
             return ""
         if len(candidates) == 1:
-            return candidates[0].summary
+            return cls._single_hint(candidates[0], word, completion)
         preview = ", ".join(item.text for item in candidates[:MATCH_PREVIEW_LIMIT])
         if len(candidates) > MATCH_PREVIEW_LIMIT:
             preview += ", ..."
         return f"{len(candidates)} matches: {preview}"
+
+    @staticmethod
+    def _single_hint(chosen: Candidate, word: str, completion: str) -> str:
+        if completion or chosen.text.lower() == word.lower():
+            return chosen.summary
+        offered = f"{TAB_HINT} {chosen.text}"
+        return f"{offered}, {chosen.summary}" if chosen.summary else offered

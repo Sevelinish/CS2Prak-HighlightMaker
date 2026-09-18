@@ -2,16 +2,21 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+from typing import Callable
 
 from rich.console import Console
 from rich.table import Table
 
-BYTES_PER_MEGABYTE = 1024 * 1024
+from ..library import DemoProfile
+
+NAME_WIDTH = 36
+ProfileLookup = Callable[[Path], "DemoProfile | None"]
 
 
 class DemoPicker:
-    def __init__(self, console: Console) -> None:
+    def __init__(self, console: Console, profile_for: ProfileLookup | None = None) -> None:
         self._console = console
+        self._profile_for = profile_for or (lambda demo: None)
 
     def pick(self, demos: list[Path]) -> Path | None:
         if not demos:
@@ -41,17 +46,19 @@ class DemoPicker:
             border_style="muted",
         )
         table.add_column("#", justify="right", width=3)
-        table.add_column("Demo", overflow="ellipsis", max_width=52)
-        table.add_column("Size", justify="right", width=9)
+        table.add_column("Demo", overflow="ellipsis", no_wrap=True, max_width=NAME_WIDTH)
+        table.add_column("Map", no_wrap=True)
+        table.add_column("Players", justify="right", width=7)
         table.add_column("Modified", justify="right", width=16)
 
         for index, demo in enumerate(demos, start=1):
-            stats = demo.stat()
+            profile = self._profile_for(demo)
             table.add_row(
                 str(index),
                 demo.name,
-                f"{stats.st_size / BYTES_PER_MEGABYTE:.1f} MB",
-                datetime.fromtimestamp(stats.st_mtime).strftime("%Y-%m-%d %H:%M"),
+                profile.map_name if profile is not None else "",
+                str(len(profile.players)) if profile is not None else "",
+                datetime.fromtimestamp(demo.stat().st_mtime).strftime("%Y-%m-%d %H:%M"),
             )
 
         self._console.print(table)

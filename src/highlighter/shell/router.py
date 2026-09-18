@@ -4,7 +4,8 @@ from rich.console import Console
 
 from .catalogue import DemoCatalogue
 from .grammar import Grammar
-from .help_view import DemoListView, HelpView, VersionView
+from .help_view import DemoListView, HelpView, PlayerListView, VersionView
+from .reading import NO_BUDGET, NewDemoReader
 from .renderer import LineRenderer
 from .runner import ShellResult, ShellRunner
 from .tokens import Lexer
@@ -12,6 +13,7 @@ from .tokens import Lexer
 RUN_COMMAND = "run"
 HELP_COMMAND = "help"
 DEMOS_COMMAND = "demos"
+PLAYERS_COMMAND = "players"
 CLEAR_COMMAND = "clear"
 VERSION_COMMAND = "version"
 EXIT_COMMAND = "exit"
@@ -53,8 +55,27 @@ class CommandRouter:
 
     def _on_demos(self, argv: list[str]) -> ShellResult:
         self._catalogue.refresh()
-        DemoListView(self._console).render(self._catalogue.demos())
+        self._forget_missing()
+        NewDemoReader(self._console, self._catalogue).read(NO_BUDGET)
+        DemoListView(self._console).render(
+            self._catalogue.demos(), self._catalogue.profile_for
+        )
         return ShellResult()
+
+    def _on_players(self, argv: list[str]) -> ShellResult:
+        demo_name = argv[0] if argv else ""
+        PlayerListView(self._console).render(
+            self._catalogue.players(demo_name), demo_name
+        )
+        return ShellResult()
+
+    def _forget_missing(self) -> None:
+        dropped = self._catalogue.forget_missing()
+        if dropped:
+            self._console.print(
+                f"[muted]{dropped} demo(s) are gone from the folders, "
+                f"dropped from the book[/muted]"
+            )
 
     def _on_clear(self, argv: list[str]) -> ShellResult:
         if self._renderer is not None:
