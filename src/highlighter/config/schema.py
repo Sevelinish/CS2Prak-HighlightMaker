@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
-CONFIG_VERSION = 17
+CONFIG_VERSION = 18
 
 DEFAULT_TAG_WEIGHTS: dict[str, float] = {
     "kills_2": 4.0,
@@ -473,6 +473,7 @@ class GameConfig:
     )
     game_startup_timeout_seconds: int = 300
     recording_timeout_minutes: int = 120
+    close_grace_seconds: int = 30
     apply_high_graphics: bool = True
     restore_graphics_on_exit: bool = True
     hlae_argument_template: list[str] = field(
@@ -517,6 +518,9 @@ class GameConfig:
             recording_timeout_minutes=int(
                 _read(source, "recordingTimeoutMinutes", default.recording_timeout_minutes)
             ),
+            close_grace_seconds=int(
+                _read(source, "closeGraceSeconds", default.close_grace_seconds)
+            ),
             hlae_argument_template=[
                 str(item)
                 for item in _read(source, "hlaeArgumentTemplate", default.hlae_argument_template)
@@ -539,6 +543,7 @@ class GameConfig:
             "consoleVariables": dict(self.console_variables),
             "gameStartupTimeoutSeconds": self.game_startup_timeout_seconds,
             "recordingTimeoutMinutes": self.recording_timeout_minutes,
+            "closeGraceSeconds": self.close_grace_seconds,
             "applyHighGraphics": self.apply_high_graphics,
             "restoreGraphicsOnExit": self.restore_graphics_on_exit,
             "hlaeArgumentTemplate": list(self.hlae_argument_template),

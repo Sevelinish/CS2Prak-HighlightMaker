@@ -1,6 +1,6 @@
 [project]
 name = "highlightercs2"
-version = "1.5.0"
+version = "1.5.1"
 description = "Find highlight rounds in CS2 demos and record them through HLAE"
 requires-python = ">=3.11"
 dependencies = [

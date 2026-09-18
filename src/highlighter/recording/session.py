@@ -313,7 +313,7 @@ class RecordingSession:
             return
 
         reporter.detail("closing the game")
-        if processes.wait_until_stopped(GAME_CLOSE_GRACE_SECONDS):
+        if processes.wait_until_stopped(self._config.game.close_grace_seconds):
             return
 
         self._logger.warning("The game did not close on its own, stopping it")
@@ -383,8 +383,19 @@ class RecordingSession:
             reporter.fail()
             raise
 
+        self._retire_superseded(library, assembled, reporter)
         reporter.done(f"{len(assembled)} of {plan.clip_count} clips written")
         return assembled
+
+    @staticmethod
+    def _retire_superseded(
+        library: OutputLibrary,
+        assembled: list[AssembledClip],
+        reporter: ProgressReporter,
+    ) -> None:
+        retired = library.retire_superseded([clip.clip.name for clip in assembled])
+        if retired:
+            reporter.detail(f"removed {len(retired)} file(s) left by an earlier run")
 
     def _join(
         self,

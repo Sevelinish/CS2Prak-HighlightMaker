@@ -341,6 +341,17 @@ class EnemyViewMigration(ConfigMigration):
             recording.setdefault(key, value)
 
 
+class QuitScriptMigration(ConfigMigration):
+    version = 18
+    reason = (
+        "the scheduled quit now runs through a cfg like every other timed command, "
+        "and the wait for the game to close is its own setting"
+    )
+
+    def apply(self, raw: dict[str, Any]) -> None:
+        raw.setdefault("game", {}).setdefault("closeGraceSeconds", 30)
+
+
 MIGRATIONS: tuple[ConfigMigration, ...] = (
     Cs2CustomLoaderMigration(),
     Cs2ClipQualityMigration(),
@@ -358,6 +369,7 @@ MIGRATIONS: tuple[ConfigMigration, ...] = (
     ChaseCameraMigration(),
     SpawnThrowMigration(),
     EnemyViewMigration(),
+    QuitScriptMigration(),
 )
 CURRENT_VERSION = max((migration.version for migration in MIGRATIONS), default=INITIAL_VERSION)
 

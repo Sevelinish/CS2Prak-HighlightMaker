@@ -117,7 +117,7 @@ Every stage prints its own line with a number, an outcome and details:
 
 ```
 ╭───────────────────────────────╮
-│  HighlighterCS2 1.5.0         │
+│  HighlighterCS2 1.5.1         │
 │  CS2 demo highlight recorder  │
 ╰───────────────────────────────╯
 
@@ -551,7 +551,8 @@ Both modes now use the correct signal:
   finish writing rather than being read mid-flight.
 - The `quit` is no longer glued to the end of the recording. It is scheduled a few seconds of
   demo time later, so HLAE gets to close its streams cleanly, and the program closes the game
-  itself if that never happens.
+  itself if that never happens. Like every other timed command it runs through a cfg, because a
+  bare `quit` handed to `mirv_cmd addAtTick` is silently ignored.
 - Only then does the assembler run, over files nothing else is touching.
 
 The total wall clock is about the same, since the encoders have to finish either way. What
@@ -593,6 +594,19 @@ first entry, so nothing can retrigger the callback that caused the rewind.
 
 Recording takes longer, because the demo is replayed once per pass. `-enemy` applies to
 highlights only, grenade modes ignore it.
+
+## What ends up in the output folder
+
+Every run writes into `Highlighter/<demo>/`. Without `-one-file` the clips sit there directly.
+With `-one-file` they go into `parts/` and only the joined video sits at the top.
+
+Two runs of the same demo with different flags used to leave both layouts side by side, so a
+folder could hold a ten second clip from an earlier run next to an eighteen second clip of the
+same name under `parts/`. That reads as if the join broke when it did not.
+
+A run now retires the copies it has superseded: a clip of the same name left by the other layout,
+and a joined video left behind when `-one-file` is off. Only files this run replaced are removed,
+anything with a different name is left alone, and the count is reported on the saving step.
 
 ## Clip segmentation
 
@@ -748,6 +762,7 @@ Want more clips, drop `minimumScore` to 6. Want only aces and clutches, raise it
 | `consoleVariables` | see config | Cvars set before recording |
 | `gameStartupTimeoutSeconds` | `300` | How long to wait for `cs2.exe` to appear after injection |
 | `recordingTimeoutMinutes` | `120` | When to force the game closed |
+| `closeGraceSeconds` | `30` | How long to let the game close itself before stopping it |
 | `applyHighGraphics` | `true` | Raise graphics to high before recording |
 | `restoreGraphicsOnExit` | `true` | Put your settings back afterwards |
 | `hlaeArgumentTemplate` | see config | HLAE arguments |

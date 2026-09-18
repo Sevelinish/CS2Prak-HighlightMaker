@@ -711,7 +711,19 @@ def test_the_quit_waits_a_few_seconds_after_the_last_take():
 
     assert lines[0] == "mirv_streams record end"
     assert lines[1].startswith("mirv_cmd addAtTick ")
-    assert lines[1].endswith(" quit")
+    assert lines[1].endswith("exec highlighter_quit")
+
+
+def test_the_quit_runs_from_a_script_like_every_other_timed_command():
+    bundle = build(RecordingConfig(), make_plan())
+
+    assert script(bundle, "highlighter_quit").strip() == "quit"
+
+
+def test_no_quit_script_is_written_when_the_game_should_stay_open():
+    names = {item.name for item in build(RecordingConfig(keep_game_open=True), make_plan()).files}
+
+    assert "highlighter_quit" not in names
 
 
 def test_the_quit_is_scheduled_after_the_recording_stops():

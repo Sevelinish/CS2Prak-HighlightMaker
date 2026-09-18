@@ -178,3 +178,103 @@ def test_concat_refuses_an_empty_list(tmp_path: Path):
 
     with pytest.raises(EncodingError):
         ConcatMuxer(tmp_path / "ffmpeg.exe").join([], tmp_path / "out.mp4")
+
+
+def test_a_single_file_run_retires_clips_left_at_the_root(tmp_path):
+    from highlighter.media.output_library import OutputLibrary
+
+    library = OutputLibrary(tmp_path, "match", "mp4", single_file=True)
+    library.prepare()
+    stale = tmp_path / "match" / "01_round01_ally.mp4"
+    stale.write_bytes(b"old run")
+    fresh = library.destination_for("01_round01_ally")
+    fresh.write_bytes(b"new run")
+
+    retired = library.retire_superseded(["01_round01_ally"])
+
+    assert retired == [stale]
+    assert not stale.exists()
+    assert fresh.read_bytes() == b"new run"
+
+
+def test_a_normal_run_retires_clips_left_in_parts(tmp_path):
+    from highlighter.media.output_library import OutputLibrary
+
+    library = OutputLibrary(tmp_path, "match", "mp4", single_file=False)
+    library.prepare()
+    parts = tmp_path / "match" / "parts"
+    parts.mkdir(parents=True, exist_ok=True)
+    stale = parts / "01_round01_ally.mp4"
+    stale.write_bytes(b"old run")
+    fresh = library.destination_for("01_round01_ally")
+    fresh.write_bytes(b"new run")
+
+    library.retire_superseded(["01_round01_ally"])
+
+    assert not stale.exists()
+    assert fresh.read_bytes() == b"new run"
+
+
+def test_a_normal_run_retires_a_reel_left_by_a_single_file_run(tmp_path):
+    from highlighter.media.output_library import OutputLibrary
+
+    library = OutputLibrary(tmp_path, "match", "mp4", single_file=False)
+    library.prepare()
+    reel = tmp_path / "match" / "match_highlights.mp4"
+    reel.write_bytes(b"old reel")
+
+    library.retire_superseded([])
+
+    assert not reel.exists()
+
+
+def test_a_single_file_run_keeps_its_own_reel(tmp_path):
+    from highlighter.media.output_library import OutputLibrary
+
+    library = OutputLibrary(tmp_path, "match", "mp4", single_file=True)
+    library.prepare()
+    reel = library.reel_destination()
+    reel.write_bytes(b"fresh reel")
+
+    library.retire_superseded([])
+
+    assert reel.read_bytes() == b"fresh reel"
+
+
+def test_clips_this_run_produced_are_never_retired(tmp_path):
+    from highlighter.media.output_library import OutputLibrary
+
+    library = OutputLibrary(tmp_path, "match", "mp4", single_file=True)
+    library.prepare()
+    fresh = library.destination_for("01_round01_ally")
+    fresh.write_bytes(b"new run")
+
+    library.retire_superseded(["01_round01_ally"])
+
+    assert fresh.is_file()
+
+
+def test_an_empty_parts_folder_is_tidied_away(tmp_path):
+    from highlighter.media.output_library import OutputLibrary
+
+    library = OutputLibrary(tmp_path, "match", "mp4", single_file=False)
+    library.prepare()
+    (tmp_path / "match" / "parts").mkdir(parents=True, exist_ok=True)
+
+    library.retire_superseded([])
+
+    assert not (tmp_path / "match" / "parts").exists()
+
+
+def test_the_concat_listing_does_not_linger(tmp_path):
+    from highlighter.media.concat import ConcatMuxer
+
+    muxer = ConcatMuxer(Path("ffmpeg.exe"))
+    muxer.run = lambda arguments, label: None
+    parts = [tmp_path / "a.mp4", tmp_path / "b.mp4"]
+    for part in parts:
+        part.write_bytes(b"x")
+
+    muxer.join(parts, tmp_path / "joined.mp4")
+
+    assert not (tmp_path / "joined_parts.txt").exists()

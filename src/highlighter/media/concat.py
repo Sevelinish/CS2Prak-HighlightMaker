@@ -21,20 +21,23 @@ class ConcatMuxer:
             return parts[0]
 
         listing = self._write_listing(parts, target)
-        self.run(
-            [
-                "-f",
-                "concat",
-                "-safe",
-                "0",
-                "-i",
-                str(listing),
-                "-c",
-                "copy",
-                str(target),
-            ],
-            target.name,
-        )
+        try:
+            self.run(
+                [
+                    "-f",
+                    "concat",
+                    "-safe",
+                    "0",
+                    "-i",
+                    str(listing),
+                    "-c",
+                    "copy",
+                    str(target),
+                ],
+                target.name,
+            )
+        finally:
+            listing.unlink(missing_ok=True)
         return target
 
     def run(self, arguments: list[str], label: str) -> None:

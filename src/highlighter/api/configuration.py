@@ -118,6 +118,7 @@ class ConfigSchema:
         ("game.launchArguments", FieldKind.LIST, "", "Command line passed to cs2.exe"),
         ("game.gameStartupTimeoutSeconds", FieldKind.INTEGER, "s", "How long to wait for cs2.exe"),
         ("game.recordingTimeoutMinutes", FieldKind.INTEGER, "min", "Hard ceiling on one recording run"),
+        ("game.closeGraceSeconds", FieldKind.INTEGER, "s", "How long to let the game close itself before stopping it"),
         ("toolchain.autoDownload", FieldKind.BOOLEAN, "", "Fetch HLAE and ffmpeg when missing"),
         ("update.releaseApiUrl", FieldKind.TEXT, "", "Release feed checked for a newer version"),
         ("update.assetPattern", FieldKind.TEXT, "", "Which release file holds the program"),

@@ -12,6 +12,7 @@ SESSION_SCRIPT_NAME = "highlighter_session"
 SEEK_SCRIPT_NAME = "highlighter_seek"
 LISTEN_SCRIPT_NAME = "highlighter_listen"
 FINISH_SCRIPT_NAME = "highlighter_finish"
+QUIT_SCRIPT_NAME = "highlighter_quit"
 SCRIPT_EXTENSION = ".cfg"
 CAMPATH_EXTENSION = ".xml"
 CAMPATH_SUFFIX = "_fly"
@@ -112,6 +113,8 @@ class MirvScriptBuilder:
         if self._recording.keep_game_open:
             files.append(ScriptFile(LISTEN_SCRIPT_NAME, self._listen_script(plan)))
             files.append(ScriptFile(FINISH_SCRIPT_NAME, self.park_script()))
+        elif self._recording.close_game_when_done:
+            files.append(ScriptFile(QUIT_SCRIPT_NAME, self.quit_script()))
 
         for position, number in enumerate(numbers):
             entries = passes[number]
@@ -340,8 +343,12 @@ class MirvScriptBuilder:
             return [f"exec {FINISH_SCRIPT_NAME}"]
         if self._recording.close_game_when_done:
             quit_tick = entry.segment.end_tick + self._ticks(plan, QUIT_DELAY_SECONDS)
-            return [f"mirv_cmd addAtTick {quit_tick} quit"]
+            return [f"mirv_cmd addAtTick {quit_tick} exec {QUIT_SCRIPT_NAME}"]
         return []
+
+    @classmethod
+    def quit_script(cls) -> str:
+        return cls._join(["quit"])
 
     @classmethod
     def park_script(cls) -> str:

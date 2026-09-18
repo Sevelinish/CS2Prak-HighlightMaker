@@ -227,10 +227,11 @@ def test_the_last_take_of_a_pass_hands_over_to_the_next():
 def test_the_very_last_take_still_closes_the_game():
     settings = RecordingConfig(record_enemy_view=True)
     bundle = scripts(build([5_000, 5_100]), settings)
-    quitting = [f for f in bundle.files if " quit" in f.content]
+    quitting = [f for f in bundle.files if "exec highlighter_quit" in f.content]
 
     assert len(quitting) == 1
     assert "exec highlighter_pass" not in quitting[0].content
+    assert any(f.name == "highlighter_quit" for f in bundle.files)
 
 
 def test_a_victim_take_aims_the_camera_at_the_victim():
