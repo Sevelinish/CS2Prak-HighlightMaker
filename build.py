@@ -5,6 +5,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from branding import IconBuilder, UnsupportedPathError
+
 ROOT = Path(__file__).resolve().parent
 DIST = ROOT / "dist"
 BUILD = ROOT / "build"
@@ -13,7 +15,10 @@ RELEASE_DIRECTORY = DIST / RELEASE_NAME
 STAGING_DIRECTORY = DIST / f".{RELEASE_NAME}-staging"
 EXECUTABLE_NAME = f"{RELEASE_NAME}.exe"
 BUNDLE_DIRECTORY = "_internal"
-SHIPPED_FILES = ("README.md", "README.ru.md")
+LOGO_FILE = "logo.svg"
+ICON_DIRECTORY = DIST / f".{RELEASE_NAME}-icon"
+ICON_NAME = f"{RELEASE_NAME}.ico"
+SHIPPED_FILES = ("README.md", "README.ru.md", LOGO_FILE)
 CONFIG_FILE = "config.json"
 CONFIG_TEMPLATE = "config.example.json"
 SHIPPED_DIRECTORIES = ("demos",)
@@ -24,7 +29,24 @@ BUNDLED_PACKAGE_ARGUMENTS = tuple(
 )
 
 
-def run_pyinstaller() -> None:
+def build_icon() -> Path | None:
+    logo = ROOT / LOGO_FILE
+    if not logo.is_file():
+        print(f"No {LOGO_FILE} next to build.py, keeping the default icon.")
+        return None
+
+    try:
+        icon = IconBuilder().build(logo, ICON_DIRECTORY / ICON_NAME)
+    except (OSError, UnsupportedPathError) as error:
+        print(f"{LOGO_FILE} could not be turned into an icon: {error}")
+        print("Building with the default icon.")
+        return None
+
+    print(f"Icon drawn from {LOGO_FILE}: {icon}")
+    return icon
+
+
+def run_pyinstaller(icon: Path | None = None) -> None:
     arguments = [
         sys.executable,
         "-m",
@@ -39,6 +61,7 @@ def run_pyinstaller() -> None:
         str(ROOT / "src"),
         "--distpath",
         str(STAGING_DIRECTORY),
+        *(("--icon", str(icon)) if icon is not None else ()),
         *BUNDLED_PACKAGE_ARGUMENTS,
         str(ROOT / "main.py"),
     ]
@@ -113,12 +136,13 @@ def copy_default_config() -> None:
 def clean() -> None:
     shutil.rmtree(BUILD, ignore_errors=True)
     shutil.rmtree(STAGING_DIRECTORY, ignore_errors=True)
+    shutil.rmtree(ICON_DIRECTORY, ignore_errors=True)
     for spec in ROOT.glob("*.spec"):
         spec.unlink(missing_ok=True)
 
 
 def main() -> int:
-    run_pyinstaller()
+    run_pyinstaller(build_icon())
     install_release()
     copy_release_files()
     clean()

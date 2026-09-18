@@ -23,7 +23,7 @@ class LoggingConfigurator:
 
         logger = logging.getLogger(LOGGER_NAME)
         logger.setLevel(logging.DEBUG)
-        logger.handlers.clear()
+        self._release(logger)
         logger.propagate = False
 
         file_handler = logging.FileHandler(
@@ -39,6 +39,15 @@ class LoggingConfigurator:
             logger.addHandler(self._console_handler())
         self._quiet_third_parties()
         return logger
+
+    @staticmethod
+    def _release(logger: logging.Logger) -> None:
+        for handler in list(logger.handlers):
+            logger.removeHandler(handler)
+            try:
+                handler.close()
+            except (OSError, ValueError):
+                continue
 
     def _console_handler(self) -> logging.Handler:
         handler = RichHandler(

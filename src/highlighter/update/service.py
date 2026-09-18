@@ -29,6 +29,11 @@ class UpdateService:
         self._paths = paths
         self._config = config
         self._logger = get_logger("update")
+        self._staged = False
+
+    @property
+    def staged(self) -> bool:
+        return self._staged
 
     @property
     def marker_file(self) -> Path:
@@ -132,6 +137,7 @@ class UpdateService:
             self._console.print(f"[danger]The update could not be downloaded[/danger]\n{error}")
             return False
 
+        self._staged = True
         self._console.print(
             Panel(
                 f"[success]Version {outcome.version} is ready to be installed[/success]\n"

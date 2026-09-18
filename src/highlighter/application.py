@@ -58,6 +58,7 @@ class Application:
         fly: bool = False,
         enemy: bool = False,
         verbose: bool = False,
+        show_banner: bool = True,
     ) -> None:
         self._paths = ApplicationPaths.discover()
         self._console: Console = build_console()
@@ -69,11 +70,13 @@ class Application:
         self._fly = fly
         self._enemy = enemy
         self._verbose = verbose
+        self._show_banner = show_banner
         self._logger = LoggingConfigurator(self._paths.logs, verbose).configure()
         self._warm_session: WarmSession | None = None
 
     def run(self) -> int:
-        self._console.print(Banner.build())
+        if self._show_banner:
+            self._console.print(Banner.build())
         try:
             return self._execute()
         except HighlighterError as error:

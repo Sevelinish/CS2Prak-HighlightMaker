@@ -1,3 +1,5 @@
+<img src="logo.svg" alt="HighlighterCS2" width="120" align="right">
+
 # HighlighterCS2
 
 Finds the good moments in Counter-Strike 2 demos and records them as ready `.mp4` files.
@@ -28,6 +30,7 @@ demo.dem  ->  parse  ->  detect  ->  table in the console  ->  pick moments
 * `-demoget` finds new demos in Downloads, unpacks them and files them under a name you choose
 * `-fly` puts the camera behind the grenade and follows it from the throw to the detonation
 * `-enemy` adds the same moment from each victim's eyes to the end of the clip
+* A prompt inside the program: start the exe, type the arguments there, with grey suggestions as you type
 * A JSON plugin API, written for CS2Prak-Launcher, that drives the whole pipeline from another program
 
 ## Quick start
@@ -39,6 +42,9 @@ Put your demos in the `demos` folder next to `HighlighterCS2.exe` and run:
 ```bash
 HighlighterCS2.exe
 ```
+
+Started with no arguments it opens its own prompt, where you type the same arguments one run
+at a time. See [The prompt](#the-prompt).
 
 HLAE and ffmpeg land in the `tools` folder by themselves. Close CS2 before the first run if it is open.
 
@@ -63,7 +69,8 @@ The result lands in `dist/HighlighterCS2/`. Rebuilding leaves the downloaded too
 
 | Command | What it does |
 | --- | --- |
-| `HighlighterCS2.exe` | Lists the demos it found and lets you choose |
+| `HighlighterCS2.exe` | Opens the prompt and takes the rest of the arguments there |
+| `HighlighterCS2.exe -no-shell` | Skips the prompt, lists the demos it found and lets you choose |
 | `HighlighterCS2.exe match.dem` | That demo, every player |
 | `HighlighterCS2.exe match.dem -p s1mple` | Only that player's moments |
 | `HighlighterCS2.exe match.dem -p -n1clxe` | Names starting with a dash work as they are |
@@ -76,6 +83,7 @@ The result lands in `dist/HighlighterCS2/`. Rebuilding leaves the downloaded too
 | `HighlighterCS2.exe match.dem -exit0` | Leave the game running so the next batch skips the startup |
 | `HighlighterCS2.exe -update` | Install the newest release, keeping clips and settings |
 | `HighlighterCS2.exe -demoget` | Import new demos from Downloads and the game folders |
+| `HighlighterCS2.exe match.dem -shell` | Opens the prompt instead of running straight away |
 | `HighlighterCS2.exe match.dem -v` | Verbose console output |
 | `HighlighterCS2.exe --api http` | Serve the plugin API on loopback instead of running the app |
 | `HighlighterCS2.exe --api stdio` | Speak the plugin API over stdin and stdout |
@@ -110,6 +118,106 @@ Nothing is deleted, so the separate clips stay available for editing. Joining ru
 [docs/API.md](docs/API.md). `--api-port 0` picks a free port, `--api-token` sets the bearer
 token instead of generating one, and `--api-endpoint-file` writes the base URL and token to a
 JSON file for a launcher that starts the plugin detached.
+
+## The prompt
+
+Started with no arguments in a console, the program does not begin a run. It opens a prompt and
+waits:
+
+```
+> 
+```
+
+Everything that used to be typed after `HighlighterCS2.exe` is typed here instead, one run per
+line. When a run finishes the prompt comes back, so a session of several demos costs one startup
+instead of one per demo.
+
+```
+> mirage17.dem -p s1mple -exit0
+> mirage17.dem -m nades_smoke -fly -exit0
+> nuke04.dem -enemy -one-file
+> exit
+```
+
+Paired with `-exit0` this is the fastest way to work through a demo: CS2 stays open between
+lines, so only the first run pays for the game startup.
+
+### Suggestions
+
+While you type, the rest of what you are likely to write appears in grey after the cursor. What
+is offered depends on where the cursor is:
+
+| What you typed | What appears | Why |
+| --- | --- | --- |
+| nothing | `<demo>` | the line starts with a demo name |
+| `mir` | `age17.dem` | a demo of that name is in the search folders |
+| `-f` | `ly` | only `-fly` starts like that |
+| `-e` | `nemy` | `-enemy` and `-exit0` both match, the first one is shown |
+| `-p` | `<nickname>` | the flag takes a value, and a nickname cannot be guessed |
+| `-m ` | `<mode>` | the same, with the seven modes listed on the right |
+| `-m nades_` | `smoke` | the value is completed from the real mode list |
+| `mirage17.dem ` | `<flag>` | the demo is set, what follows is a flag |
+
+The text on the right of the line is a short explanation: the description of the flag when one
+matches, or the list of matches when several do. A flag that is already on the line is not
+offered a second time.
+
+A grey value in angle brackets is a hint, not text. It is never inserted, it only says what the
+program is waiting for. Grey text that is not in brackets is a real completion and can be taken.
+
+When nothing in the grammar matches, the last line you typed that starts the same way is offered
+instead, so a long command is retyped by its first few characters.
+
+### Keys
+
+| Key | What it does |
+| --- | --- |
+| Tab | takes the grey suggestion, pressing again moves to the next match |
+| Right, End | takes the grey suggestion when the cursor is at the end of the line |
+| Left, Right, Home, End | move inside the line |
+| Ctrl+Left, Ctrl+Right | move by words |
+| Up, Down | walk through the lines you typed before |
+| Ctrl+W | delete the word before the cursor |
+| Ctrl+U | delete to the start of the line |
+| Ctrl+L | wipe the screen |
+| Esc | clear the line |
+| Ctrl+C | clear the line, or leave when the line is already empty |
+| Ctrl+D, Ctrl+Z | leave |
+
+### Words it understands on its own
+
+| Word | What it does |
+| --- | --- |
+| `run` | records with the arguments that follow, or with none at all |
+| `help`, `?` | prints every argument, key and example |
+| `demos` | lists the demos the prompt can complete, with their folders |
+| `clear`, `cls` | wipes the screen |
+| `version` | prints the installed version |
+| `exit`, `quit` | leaves |
+
+An empty line does nothing. To start a run with no arguments at all, which is the old behaviour
+of double clicking the exe, type `run`.
+
+`-update` behaves differently here than the other arguments. The installer replaces the exe that
+is running, so it cannot run while the prompt is open. When an update is downloaded the prompt
+closes itself and the swap happens a few seconds later, exactly as it does from the command line.
+
+### When the prompt does not open
+
+The prompt is for a person at a keyboard, so it stays out of the way everywhere else:
+
+* Any argument on the command line runs straight away, as before. Only a bare `HighlighterCS2.exe`
+  opens the prompt.
+* `-no-shell` never opens it, for a shortcut or a script that expects the old behaviour.
+* `-shell` opens it even when other arguments were given.
+* `--api` never opens it. A launcher speaking the plugin API is not affected in any way.
+* Redirected input never opens it, so `echo ... | HighlighterCS2.exe` keeps working.
+
+In a console that cannot do inline colour the prompt still runs and still takes the same
+arguments, only without the grey suggestions. It says so on the first line.
+
+The lines you type are kept in `work/shell_history.txt`, the last 200 of them, so Up still
+reaches yesterday's commands.
 
 ## What a run looks like
 
@@ -923,7 +1031,16 @@ The `is_warmup_period` field the parser exposes came back as `False` in every CS
 src/highlighter/
 ├── application.py       the whole scenario
 ├── cli.py               command line parsing
+├── entrypoint.py        turning parsed arguments into a run
 ├── version.py           the version everything reports and compares against
+├── shell/               the prompt the exe opens when it is started bare
+│   ├── grammar.py       the arguments, values and words the prompt knows
+│   ├── suggester.py     what to offer for the word under the cursor
+│   ├── prompt.py        the line editor and the keys it answers to
+│   ├── layout.py        fitting prompt, text, ghost and hint into the width
+│   ├── document.py      the line being edited
+│   ├── reader.py        keys.py  renderer.py  terminal.py  history.py
+│   └── router.py        runner.py  session.py  catalogue.py  launcher.py
 ├── importing/           bringing new demos in from Downloads and the game folders
 │   ├── sources.py       where to look
 │   ├── archives.py      unpacking zst, gz and bz2
@@ -978,6 +1095,11 @@ src/highlighter/
     └── highlight_table.py  grenade_table.py  selector.py  selection_parser.py  demo_picker.py
 ```
 
+The `branding` package next to `build.py` is build time only. It turns `logo.svg` into the
+multi size `.ico` that PyInstaller embeds in the executable, without any imaging dependency:
+it reads the straight line paths out of the SVG, fills them with an even odd scanline, and
+writes the icon directory itself.
+
 To add your own detection rule: subclass `HighlightRule`, set `name`, add the class to `AVAILABLE_RULES` in `detection/registry.py` and a weight to `tagWeights`.
 
 ## Tests
@@ -986,7 +1108,7 @@ To add your own detection rule: subclass `HighlightRule`, set `name`, add the cl
 .venv\Scripts\python -m pytest
 ```
 
-Over two hundred tests. They cover argument parsing, demo lookup, detection and scoring, segmentation, the guard against seek loops, mirv script generation, encoder selection, config migrations, HLAE install integrity and watching the game process.
+Over six hundred tests. They cover argument parsing, demo lookup, detection and scoring, segmentation, the guard against seek loops, mirv script generation, encoder selection, config migrations, HLAE install integrity, watching the game process, and the prompt with its line editing and suggestions.
 
 ## Requirements
 

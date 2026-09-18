@@ -16,13 +16,20 @@ class UpdateCommand:
         self._paths = ApplicationPaths.discover()
         self._console = build_console()
         self._logger = LoggingConfigurator(self._paths.logs, verbose).configure()
+        self._staged = False
+
+    @property
+    def staged(self) -> bool:
+        return self._staged
 
     def run(self) -> int:
         try:
             config = ConfigRepository(self._paths.config_file).load()
             service = UpdateService(self._console, self._paths, config)
             service.announce_installed()
-            return EXIT_SUCCESS if service.run() else EXIT_FAILURE
+            finished = service.run()
+            self._staged = service.staged
+            return EXIT_SUCCESS if finished else EXIT_FAILURE
         except HighlighterError as error:
             self._console.print(f"[danger]{error}[/danger]")
             self._logger.debug("Update aborted", exc_info=True)

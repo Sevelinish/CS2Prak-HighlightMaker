@@ -1,6 +1,6 @@
 [project]
 name = "highlightercs2"
-version = "1.5.1"
+version = "1.6.0"
 description = "Find highlight rounds in CS2 demos and record them through HLAE"
 requires-python = ">=3.11"
 dependencies = [
@@ -14,7 +14,7 @@ highlightercs2 = "highlighter.application:Application"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src", "tests"]
+pythonpath = [".", "src", "tests"]
 addopts = "-q"
 
 [tool.setuptools.packages.find]

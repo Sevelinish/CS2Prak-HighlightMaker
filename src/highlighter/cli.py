@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import argparse
+import sys
 
 from .api.contract import DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT, HOST_APPLICATION
+from .infrastructure.errors import HighlighterError
 
 PROGRAM_NAME = "HighlighterCS2"
 DESCRIPTION = "Find highlight rounds in a CS2 demo and record them through HLAE."
 EPILOG = """examples:
-  HighlighterCS2                          pick a demo, every player
+  HighlighterCS2                          open the prompt and type the rest there
+  HighlighterCS2 -no-shell                pick a demo straight away, every player
   HighlighterCS2 match.dem                that demo, every player
   HighlighterCS2 match.dem -p s1mple      only that player
   HighlighterCS2 match.dem -p -n1clxe     names starting with a dash are fine
@@ -24,6 +27,9 @@ EPILOG = """examples:
   HighlighterCS2 --api http                start the plugin API on 127.0.0.1
   HighlighterCS2 --api stdio               speak the plugin API over stdin/stdout
 
+Started without arguments in a console, the program opens its own prompt and
+takes the same arguments there, one run per line, with suggestions as you type.
+
 The demo can be a full path or just a file name; plain names are looked up in
 the demo folder and in the CS2 demo folders.
 
@@ -39,6 +45,8 @@ UPDATE_FLAGS = ("-update", "--update")
 DEMO_GET_FLAGS = ("-demoget", "--demoget")
 FLY_FLAGS = ("-fly", "--fly")
 ENEMY_FLAGS = ("-enemy", "--enemy")
+SHELL_FLAGS = ("-shell", "--shell")
+NO_SHELL_FLAGS = ("-no-shell", "--no-shell")
 MODE_FLAGS = ("-m", "--mode")
 API_FLAG = "--api"
 API_TRANSPORTS = ("http", "stdio")
@@ -61,15 +69,41 @@ KNOWN_FLAGS = frozenset(
         *DEMO_GET_FLAGS,
         *FLY_FLAGS,
         *ENEMY_FLAGS,
+        *SHELL_FLAGS,
+        *NO_SHELL_FLAGS,
         *MODE_FLAGS,
     }
 )
+
+
+class CommandLineError(HighlighterError):
+    pass
+
+
+class CommandLineStop(Exception):
+    def __init__(self, status: int = 0) -> None:
+        super().__init__(status)
+        self.status = status
+
+
+class QuietParser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:
+        raise CommandLineError(message)
+
+    def exit(self, status: int = 0, message: str | None = None) -> None:
+        if message:
+            self._print_message(message, sys.stderr)
+        raise CommandLineStop(status)
 
 
 class CommandLine:
     @classmethod
     def parse(cls, argv: list[str]) -> argparse.Namespace:
         return cls.build_parser().parse_args(cls.normalize(argv))
+
+    @classmethod
+    def parse_quietly(cls, argv: list[str]) -> argparse.Namespace:
+        return cls.build_parser(quiet=True).parse_args(cls.normalize(argv))
 
     @staticmethod
     def normalize(argv: list[str]) -> list[str]:
@@ -92,8 +126,9 @@ class CommandLine:
         return normalized
 
     @staticmethod
-    def build_parser() -> argparse.ArgumentParser:
-        parser = argparse.ArgumentParser(
+    def build_parser(quiet: bool = False) -> argparse.ArgumentParser:
+        factory = QuietParser if quiet else argparse.ArgumentParser
+        parser = factory(
             prog=PROGRAM_NAME,
             description=DESCRIPTION,
             epilog=EPILOG,
@@ -155,6 +190,18 @@ class CommandLine:
             dest="demo_get",
             action="store_true",
             help="find new demos in Downloads and the CS2 folders and import them",
+        )
+        parser.add_argument(
+            *SHELL_FLAGS,
+            dest="shell",
+            action="store_true",
+            help="open the prompt instead of running straight away",
+        )
+        parser.add_argument(
+            *NO_SHELL_FLAGS,
+            dest="no_shell",
+            action="store_true",
+            help="never open the prompt, run straight away",
         )
         CommandLine._add_api_arguments(parser)
         parser.add_argument(

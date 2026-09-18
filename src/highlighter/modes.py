@@ -56,8 +56,12 @@ class RunMode:
         )
 
     @staticmethod
-    def available() -> str:
-        grenades = ", ".join(
+    def tokens() -> tuple[str, ...]:
+        grenades = tuple(
             f"{NADES_PREFIX}{SEPARATOR}{kind}" for kind in GrenadeKind.tokens()
         )
-        return f"{HIGHLIGHTS_TOKEN}, {NADES_PREFIX}, {grenades}"
+        return (HIGHLIGHTS_TOKEN, NADES_PREFIX, *grenades)
+
+    @classmethod
+    def available(cls) -> str:
+        return ", ".join(cls.tokens())

@@ -41,6 +41,11 @@ the API stays a machine tool, and neither is allowed to break the other.
 The plugin is the same executable as the interactive app. The `--api` flag replaces the
 interactive run with an API server.
 
+Started with no arguments at all, the executable opens an interactive prompt for a person at a
+keyboard. `--api` always takes priority over it, so a host that passes `--api` never gets the
+prompt, on any transport and with any other flag combined. Redirected input does not get it
+either.
+
 ```bash
 HighlighterCS2.exe --api http --api-port 0 --api-endpoint-file work/api.json
 ```
