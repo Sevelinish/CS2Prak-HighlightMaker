@@ -6,7 +6,7 @@ from pathlib import Path
 from ..config.schema import GameConfig, RecordingConfig
 from ..media.encoders import EncoderProfile
 from .campath import CampathDocument
-from ..plan.models import CameraBeat, ClipSegment, ClipSpec, RecordingPlan
+from ..plan.models import CameraBeat, ClipPlayer, ClipSegment, ClipSpec, RecordingPlan
 
 SESSION_SCRIPT_NAME = "highlighter_session"
 SEEK_SCRIPT_NAME = "highlighter_seek"
@@ -16,6 +16,7 @@ SCRIPT_EXTENSION = ".cfg"
 CAMPATH_EXTENSION = ".xml"
 CAMPATH_SUFFIX = "_fly"
 FLY_SUFFIX = "_flycam"
+PASS_SCRIPT_PREFIX = "highlighter_pass"
 HANDOVER_SCRIPT_NAME = "highlighter_handover"
 LISTEN_START_DELAY_SECONDS = 5.0
 MAXIMUM_LISTEN_ENTRIES = 4000
@@ -100,22 +101,36 @@ class MirvScriptBuilder:
         self._script_directory = script_directory or Path(".")
 
     def build(self, plan: RecordingPlan, handover: bool = False) -> ScriptBundle:
-        schedule = self._flatten(plan)
-        files = [ScriptFile(SESSION_SCRIPT_NAME, self._session_script(plan, schedule))]
+        passes = self._by_pass(plan)
+        numbers = sorted(passes)
+        opening = passes[numbers[0]] if numbers else []
+        files = [ScriptFile(SESSION_SCRIPT_NAME, self._session_script(plan, opening))]
 
-        if schedule:
-            files.append(ScriptFile(SEEK_SCRIPT_NAME, self._seek_script(schedule[0])))
+        if opening:
+            files.append(ScriptFile(SEEK_SCRIPT_NAME, self._seek_script(opening[0])))
 
         if self._recording.keep_game_open:
             files.append(ScriptFile(LISTEN_SCRIPT_NAME, self._listen_script(plan)))
             files.append(ScriptFile(FINISH_SCRIPT_NAME, self.park_script()))
 
-        for position, entry in enumerate(schedule):
-            following = schedule[position + 1] if position + 1 < len(schedule) else None
-            files.append(ScriptFile(entry.start_script_name, self._start_script(entry)))
-            files.append(
-                ScriptFile(entry.end_script_name, self._end_script(plan, entry, following))
-            )
+        for position, number in enumerate(numbers):
+            entries = passes[number]
+            upcoming = numbers[position + 1] if position + 1 < len(numbers) else None
+            if position:
+                files.append(
+                    ScriptFile(self._pass_name(number), self._pass_script(entries))
+                )
+            for index, entry in enumerate(entries):
+                following = entries[index + 1] if index + 1 < len(entries) else None
+                files.append(
+                    ScriptFile(entry.start_script_name, self._start_script(entry))
+                )
+                files.append(
+                    ScriptFile(
+                        entry.end_script_name,
+                        self._end_script(plan, entry, following, upcoming),
+                    )
+                )
 
         for beat in self._beats(plan):
             files.append(
@@ -124,15 +139,15 @@ class MirvScriptBuilder:
 
         files.extend(self._chase_files(plan))
 
-        if handover and schedule:
+        if handover and opening:
             files.append(
-                ScriptFile(HANDOVER_SCRIPT_NAME, self._handover_script(schedule[0]))
+                ScriptFile(HANDOVER_SCRIPT_NAME, self._handover_script(opening[0]))
             )
 
         return ScriptBundle(
             files=tuple(files),
             entry_script=SESSION_SCRIPT_NAME,
-            handover_script=HANDOVER_SCRIPT_NAME if handover and schedule else "",
+            handover_script=HANDOVER_SCRIPT_NAME if handover and opening else "",
             listen_script=LISTEN_SCRIPT_NAME if self._recording.keep_game_open else "",
         )
 
@@ -191,6 +206,19 @@ class MirvScriptBuilder:
             for clip in plan.clips
             for segment in clip.segments
         ]
+
+    @classmethod
+    def _by_pass(cls, plan: RecordingPlan) -> dict[int, list[ScheduledSegment]]:
+        grouped: dict[int, list[ScheduledSegment]] = {}
+        for entry in cls._flatten(plan):
+            grouped.setdefault(entry.segment.pass_index, []).append(entry)
+        for entries in grouped.values():
+            entries.sort(key=lambda item: item.segment.start_tick)
+        return grouped
+
+    @staticmethod
+    def _pass_name(number: int) -> str:
+        return f"{PASS_SCRIPT_PREFIX}{number:02d}"
 
     def _session_script(self, plan: RecordingPlan, schedule: list[ScheduledSegment]) -> str:
         lines = [f"{name} {value}" for name, value in self._game.console_variables.items()]
@@ -269,7 +297,7 @@ class MirvScriptBuilder:
         if entry.segment.setup_commands:
             return list(entry.segment.setup_commands)
         return [
-            *self._spectate_commands(entry.clip),
+            *self._spectate_commands(entry.segment.player or entry.clip.player),
             f"spec_mode {self._spectator_mode()}",
         ]
 
@@ -278,6 +306,7 @@ class MirvScriptBuilder:
         plan: RecordingPlan,
         entry: ScheduledSegment,
         following: ScheduledSegment | None,
+        upcoming_pass: int | None = None,
     ) -> str:
         lines = ["mirv_streams record end"]
         if entry.clip.camera_path.is_usable:
@@ -286,7 +315,25 @@ class MirvScriptBuilder:
             if self._recording.skip_dead_time:
                 lines.append(self._forward_seek(entry.segment.end_tick, following))
             return self._join(lines)
+        if upcoming_pass is not None:
+            lines.append(f"exec {self._pass_name(upcoming_pass)}")
+            return self._join(lines)
         return self._join(lines + self._finale(plan, entry))
+
+    def _pass_script(self, entries: list[ScheduledSegment]) -> str:
+        lines = ["mirv_cmd clear"]
+        for entry in entries:
+            lines.append(
+                f"mirv_cmd addAtTick {entry.segment.start_tick} exec {entry.start_script_name}"
+            )
+            lines.append(
+                f"mirv_cmd addAtTick {entry.segment.end_tick} exec {entry.end_script_name}"
+            )
+        lines.append(f"demo_gototick {self._rewind_tick(entries[0])}")
+        return self._join(lines)
+
+    def _rewind_tick(self, first: ScheduledSegment) -> int:
+        return max(0, first.segment.start_tick - self._recording.seek_lead_ticks)
 
     def _finale(self, plan: RecordingPlan, entry: ScheduledSegment) -> list[str]:
         if self._recording.keep_game_open:
@@ -346,13 +393,13 @@ class MirvScriptBuilder:
             return ""
         return f"demo_gototick {destination}" 
 
-    def _spectate_commands(self, clip: ClipSpec) -> list[str]:
+    def _spectate_commands(self, player: ClipPlayer) -> list[str]:
         return [
             template.format(
-                account_id=clip.player.account_id,
-                steam_id64=clip.player.steam_id64,
-                slot=clip.player.slot,
-                player_name=self._console_safe(clip.player.name),
+                account_id=player.account_id,
+                steam_id64=player.steam_id64,
+                slot=player.slot,
+                player_name=self._console_safe(player.name),
             )
             for template in self._recording.spectate_commands
         ]

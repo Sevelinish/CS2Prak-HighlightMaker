@@ -40,6 +40,7 @@ def main() -> int:
         one_file=arguments.one_file,
         keep_game_open=arguments.keep_game_open,
         fly=arguments.fly,
+        enemy=arguments.enemy,
         verbose=arguments.verbose,
     ).run()
 

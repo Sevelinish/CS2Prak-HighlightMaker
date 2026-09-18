@@ -12,6 +12,7 @@ EPILOG = """examples:
   HighlighterCS2 match.dem -p s1mple      only that player
   HighlighterCS2 match.dem -p -n1clxe     names starting with a dash are fine
   HighlighterCS2 match.dem -p 76561198000000000
+  HighlighterCS2 match.dem -enemy         then replay every kill from the victim's eyes
   HighlighterCS2 match.dem -one-file      join the picked moments into one video
   HighlighterCS2 match.dem -exit0         leave the game running for the next batch
   HighlighterCS2 -update                  install the newest release, keeping clips and config
@@ -37,6 +38,7 @@ KEEP_GAME_FLAGS = ("-exit0", "--exit0", "--keep-game-open")
 UPDATE_FLAGS = ("-update", "--update")
 DEMO_GET_FLAGS = ("-demoget", "--demoget")
 FLY_FLAGS = ("-fly", "--fly")
+ENEMY_FLAGS = ("-enemy", "--enemy")
 MODE_FLAGS = ("-m", "--mode")
 API_FLAG = "--api"
 API_TRANSPORTS = ("http", "stdio")
@@ -58,6 +60,7 @@ KNOWN_FLAGS = frozenset(
         *UPDATE_FLAGS,
         *DEMO_GET_FLAGS,
         *FLY_FLAGS,
+        *ENEMY_FLAGS,
         *MODE_FLAGS,
     }
 )
@@ -134,6 +137,12 @@ class CommandLine:
             dest="update",
             action="store_true",
             help="check for a newer release, download it and install it",
+        )
+        parser.add_argument(
+            *ENEMY_FLAGS,
+            dest="enemy",
+            action="store_true",
+            help="replay each kill from the victim's own eyes after the player view",
         )
         parser.add_argument(
             *FLY_FLAGS,

@@ -326,6 +326,21 @@ class SpawnThrowMigration(ConfigMigration):
             nades.setdefault(key, value)
 
 
+class EnemyViewMigration(ConfigMigration):
+    version = 17
+    reason = "a clip can now replay each kill from the victim's own eyes after the player view"
+    SETTINGS = {
+        "recordEnemyView": False,
+        "enemyLeadSeconds": 2.5,
+        "enemyHoldSeconds": 1.5,
+    }
+
+    def apply(self, raw: dict[str, Any]) -> None:
+        recording = raw.setdefault("recording", {})
+        for key, value in self.SETTINGS.items():
+            recording.setdefault(key, value)
+
+
 MIGRATIONS: tuple[ConfigMigration, ...] = (
     Cs2CustomLoaderMigration(),
     Cs2ClipQualityMigration(),
@@ -342,6 +357,7 @@ MIGRATIONS: tuple[ConfigMigration, ...] = (
     GroupedThrowMigration(),
     ChaseCameraMigration(),
     SpawnThrowMigration(),
+    EnemyViewMigration(),
 )
 CURRENT_VERSION = max((migration.version for migration in MIGRATIONS), default=INITIAL_VERSION)
 

@@ -735,7 +735,12 @@ the same firefight, cover the same stretch of the demo. The recorder plays the d
 overlapping recordings would cut each other short, and those are filmed as one clip instead. Pick
 four grenades in one execute and you may get one clip back rather than four.
 
-Each clip lists its `segments` and `beats`. A segment is a continuous stretch of demo time
+Each clip lists its `segments` and `beats`. A segment carries a `pass` number, and when
+`recording.recordEnemyView` is on, the segments after the player views carry `label: "enemy"`
+and their own `player`, the victim of that kill. Segments with the same `pass` are recorded in
+one sweep of the demo; a higher pass means the demo is rewound and played again. The video is
+assembled in segment order regardless of pass, so the player view comes first and the victims
+follow. A segment is a continuous stretch of demo time
 that is actually recorded, so more than one segment means dead time was cut out. A beat is a
 timed console action inside a clip, used by grenade clips for the zoom hold and the cut to
 the landing spot.

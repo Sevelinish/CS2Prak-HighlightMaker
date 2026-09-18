@@ -43,6 +43,9 @@ class ClipSegment:
     kill_ticks: tuple[int, ...]
     duration_seconds: float
     setup_commands: tuple[str, ...] = ()
+    pass_index: int = 1
+    player: "ClipPlayer | None" = None
+    label: str = ""
 
     @property
     def name(self) -> str:
@@ -56,6 +59,9 @@ class ClipSegment:
             "killTicks": list(self.kill_ticks),
             "durationSeconds": round(self.duration_seconds, 2),
             "setupCommands": list(self.setup_commands),
+            "pass": self.pass_index,
+            "player": self.player.to_mapping() if self.player else None,
+            "label": self.label,
         }
 
 

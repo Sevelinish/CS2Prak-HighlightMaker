@@ -27,6 +27,7 @@ demo.dem  ->  parse  ->  detect  ->  table in the console  ->  pick moments
 * `-update` installs the newest release on its own and keeps your clips and settings
 * `-demoget` finds new demos in Downloads, unpacks them and files them under a name you choose
 * `-fly` puts the camera behind the grenade and follows it from the throw to the detonation
+* `-enemy` adds the same moment from each victim's eyes to the end of the clip
 * A JSON plugin API, written for CS2Prak-Launcher, that drives the whole pipeline from another program
 
 ## Quick start
@@ -70,6 +71,7 @@ The result lands in `dist/HighlighterCS2/`. Rebuilding leaves the downloaded too
 | `HighlighterCS2.exe match.dem -m nades_smoke` | Every smoke that was thrown, instead of highlights |
 | `HighlighterCS2.exe match.dem -m nades` | Every grenade of every kind |
 | `HighlighterCS2.exe match.dem -m nades_smoke -fly` | Fly behind each smoke until it opens |
+| `HighlighterCS2.exe match.dem -enemy` | Then replay every kill from the victim's eyes |
 | `HighlighterCS2.exe match.dem -one-file` | Join the picked moments into a single video |
 | `HighlighterCS2.exe match.dem -exit0` | Leave the game running so the next batch skips the startup |
 | `HighlighterCS2.exe -update` | Install the newest release, keeping clips and settings |
@@ -115,7 +117,7 @@ Every stage prints its own line with a number, an outcome and details:
 
 ```
 ╭───────────────────────────────╮
-│  HighlighterCS2 1.4.0         │
+│  HighlighterCS2 1.5.0         │
 │  CS2 demo highlight recorder  │
 ╰───────────────────────────────╯
 
@@ -556,6 +558,42 @@ The total wall clock is about the same, since the encoders have to finish either
 changes is that the waiting now happens in the recording stage where it belongs, saving is
 quick, and no clip is ever assembled from a half written take.
 
+## The kill from the other side
+
+```bash
+HighlighterCS2.exe match.dem -p s1mple -enemy
+```
+
+The clip opens the way it always did, following the player. Then the same moment plays again
+from each victim's own eyes, one after another, in the order they died, all inside the same
+video file.
+
+The demo only plays forwards, and everything is driven by tick callbacks, so the same stretch
+cannot be filmed twice in one run. The recording is split into **passes** instead. Pass one
+records every player view. At the end of it the schedule is cleared, the next pass is scheduled
+and the demo rewinds. Each pass records a set of takes that do not overlap each other.
+
+Victim views of kills that are seconds apart share one pass. Kills a fraction of a second apart
+need a pass each, since their windows overlap. A four kill round with two tight pairs comes out
+as three passes: the player view, then two victims, then the other two.
+
+Every take lands in its own folder, and the clip is assembled from its segments in order, so the
+file reads player view first and victims after. The passes are only about when the game records
+them, not about what ends up in the video.
+
+Two guards come out of the same machinery that keeps a warm game alive. A pass script always
+clears the schedule before it adds its own entries, and it rewinds to a tick strictly before its
+first entry, so nothing can retrigger the callback that caused the rewind.
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `recording.recordEnemyView` | `false` | Same as passing `-enemy` every time |
+| `recording.enemyLeadSeconds` | `2.5` | How long before the kill the victim view starts |
+| `recording.enemyHoldSeconds` | `1.5` | How long it keeps rolling after the kill |
+
+Recording takes longer, because the demo is replayed once per pass. `-enemy` applies to
+highlights only, grenade modes ignore it.
+
 ## Clip segmentation
 
 A round with three kills twenty seconds apart is not a highlight. So a clip is not recorded in one piece, but in segments:
@@ -626,6 +664,9 @@ The `logs/highlighter.log` file always receives everything down to `DEBUG`, what
 | `closeGameWhenDone` | `true` | Close CS2 after the last clip, ignored when `keepGameOpen` is on |
 | `openOutputFolder` | `true` | Open the clip folder when finished |
 | `singleFile` | `false` | Join every clip into one video, same as `-one-file` |
+| `recordEnemyView` | `false` | Replay every kill from the victim's eyes, same as `-enemy` |
+| `enemyLeadSeconds` | `2.5` | Recorded time before a kill in the victim view |
+| `enemyHoldSeconds` | `1.5` | Recorded time after a kill in the victim view |
 | `keepGameOpen` | `false` | Leave CS2 running for the next batch, same as `-exit0` |
 | `handoverChannel` | `netcon` | `netcon` closes the demo, `demo` leaves it playing |
 | `handoverIntervalSeconds` | `1.0` | How often the running game looks for a new script |
@@ -901,6 +942,8 @@ src/highlighter/
 │   ├── engine.py  context.py  registry.py  rule.py  player_filter.py
 │   └── rules/           multi_kill  weapon_feat  clutch  trick_shot
 ├── plan/                the clip plan, the contract between stages
+│   ├── grouping.py      folding overlapping moments into one clip
+│   ├── passes.py        splitting takes into rewind passes
 │   └── models.py  builder.py  segmenter.py  writer.py
 ├── recording/           everything HLAE related
 │   ├── mirv_script.py   cfg generation

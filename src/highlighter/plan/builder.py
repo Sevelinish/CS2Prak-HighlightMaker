@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from pathlib import Path
 from typing import Sequence
 
@@ -9,13 +10,16 @@ from ..domain.highlight import Highlight
 from ..domain.kill import Kill
 from ..domain.match import Match
 from ..domain.round import Round
+from ..domain.player import Player
 from .grouping import OverlapGrouper, Window
-from .models import ClipPlayer, ClipSpec, RecordingPlan
+from .models import ClipPlayer, ClipSegment, ClipSpec, RecordingPlan
+from .passes import PassPlanner, PassSlot
 from .segmenter import ClipSegmenter
 
 UNSAFE_NAME_PATTERN = re.compile(r"[^a-z0-9]+")
 MAXIMUM_NAME_TOKEN_LENGTH = 18
 PRIMARY_TAG_COUNT = 2
+ENEMY_LABEL = "enemy"
 
 
 class RecordingPlanBuilder:
@@ -53,11 +57,13 @@ class RecordingPlanBuilder:
         for group in groups:
             ordered = sorted(group, key=lambda item: item.first_tick)
             lead = self._leading(ordered)
+            kills = self._kills(ordered)
             segments = segmenter.segment(
-                self._kills(ordered), self._round_for(ordered, rounds_by_number)
+                kills, self._round_for(ordered, rounds_by_number)
             )
             if not segments:
                 continue
+            segments = (*segments, *self._enemy_segments(match, kills, len(segments)))
 
             index += 1
             plan.clips.append(
@@ -81,7 +87,69 @@ class RecordingPlanBuilder:
             )
 
         plan.merged_sources = self._merged
+        self._assign_passes(plan)
         return plan
+
+    def _enemy_segments(
+        self, match: Match, kills: Sequence[Kill], offset: int
+    ) -> tuple[ClipSegment, ...]:
+        if not self._settings.record_enemy_view:
+            return ()
+
+        lead = match.seconds_to_ticks(self._settings.enemy_lead_seconds)
+        hold = match.seconds_to_ticks(self._settings.enemy_hold_seconds)
+        collected: list[ClipSegment] = []
+
+        for position, kill in enumerate(kills, start=1):
+            victim = match.players.get(kill.victim.steam_id64, kill.victim)
+            start = max(0, kill.tick - lead)
+            end = max(kill.tick + hold, start + match.tick_rate)
+            collected.append(
+                ClipSegment(
+                    index=offset + position,
+                    start_tick=start,
+                    end_tick=end,
+                    kill_ticks=(kill.tick,),
+                    duration_seconds=match.ticks_to_seconds(end - start),
+                    player=self._as_clip_player(victim),
+                    label=ENEMY_LABEL,
+                )
+            )
+        return tuple(collected)
+
+    def _assign_passes(self, plan: RecordingPlan) -> None:
+        pairs = [
+            (clip_index, segment_index, segment)
+            for clip_index, clip in enumerate(plan.clips)
+            for segment_index, segment in enumerate(clip.segments)
+        ]
+        ordered = [item for item in pairs if item[2].label != ENEMY_LABEL]
+        enemies = [item for item in pairs if item[2].label == ENEMY_LABEL]
+        if not enemies:
+            return
+        ordered += enemies
+
+        slots = [PassSlot(item[2].start_tick, item[2].end_tick) for item in ordered]
+        reserved = sum(1 for item in ordered if item[2].label != ENEMY_LABEL)
+        numbers = PassPlanner(self._settings.seek_lead_ticks).assign(slots, reserved)
+
+        rebuilt = [list(clip.segments) for clip in plan.clips]
+        for (clip_index, segment_index, segment), number in zip(ordered, numbers):
+            rebuilt[clip_index][segment_index] = replace(segment, pass_index=number)
+
+        plan.clips[:] = [
+            replace(clip, segments=tuple(rebuilt[index]))
+            for index, clip in enumerate(plan.clips)
+        ]
+
+    @staticmethod
+    def _as_clip_player(player: Player) -> ClipPlayer:
+        return ClipPlayer(
+            name=player.name,
+            steam_id64=player.steam_id64,
+            account_id=player.account_id,
+            slot=player.slot,
+        )
 
     def _window(self, match: Match, highlight: Highlight, rounds_by_number) -> Window:
         start = highlight.first_tick - match.seconds_to_ticks(

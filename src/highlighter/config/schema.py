@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
-CONFIG_VERSION = 16
+CONFIG_VERSION = 17
 
 DEFAULT_TAG_WEIGHTS: dict[str, float] = {
     "kills_2": 4.0,
@@ -107,6 +107,9 @@ class RecordingConfig:
     close_game_when_done: bool = True
     open_output_folder: bool = True
     single_file: bool = False
+    record_enemy_view: bool = False
+    enemy_lead_seconds: float = 2.5
+    enemy_hold_seconds: float = 1.5
     keep_game_open: bool = False
     handover_channel: str = "netcon"
     handover_interval_seconds: float = 1.0
@@ -145,6 +148,15 @@ class RecordingConfig:
                 _read(source, "openOutputFolder", default.open_output_folder)
             ),
             single_file=bool(_read(source, "singleFile", default.single_file)),
+            record_enemy_view=bool(
+                _read(source, "recordEnemyView", default.record_enemy_view)
+            ),
+            enemy_lead_seconds=float(
+                _read(source, "enemyLeadSeconds", default.enemy_lead_seconds)
+            ),
+            enemy_hold_seconds=float(
+                _read(source, "enemyHoldSeconds", default.enemy_hold_seconds)
+            ),
             keep_game_open=bool(_read(source, "keepGameOpen", default.keep_game_open)),
             handover_channel=str(
                 _read(source, "handoverChannel", default.handover_channel)
@@ -184,6 +196,9 @@ class RecordingConfig:
             "closeGameWhenDone": self.close_game_when_done,
             "openOutputFolder": self.open_output_folder,
             "singleFile": self.single_file,
+            "recordEnemyView": self.record_enemy_view,
+            "enemyLeadSeconds": self.enemy_lead_seconds,
+            "enemyHoldSeconds": self.enemy_hold_seconds,
             "keepGameOpen": self.keep_game_open,
             "handoverChannel": self.handover_channel,
             "handoverIntervalSeconds": self.handover_interval_seconds,
