@@ -3,20 +3,13 @@ from __future__ import annotations
 from rich.console import Console
 
 from .catalogue import DemoCatalogue
+from .config_command import ConfigCommand
 from .grammar import Grammar
 from .help_view import DemoListView, HelpView, PlayerListView, VersionView
 from .reading import NO_BUDGET, NewDemoReader
 from .renderer import LineRenderer
 from .runner import ShellResult, ShellRunner
 from .tokens import Lexer
-
-RUN_COMMAND = "run"
-HELP_COMMAND = "help"
-DEMOS_COMMAND = "demos"
-PLAYERS_COMMAND = "players"
-CLEAR_COMMAND = "clear"
-VERSION_COMMAND = "version"
-EXIT_COMMAND = "exit"
 
 
 class CommandRouter:
@@ -27,12 +20,14 @@ class CommandRouter:
         catalogue: DemoCatalogue,
         renderer: LineRenderer | None = None,
         grammar: Grammar | None = None,
+        settings: ConfigCommand | None = None,
     ) -> None:
         self._console = console
         self._runner = runner
         self._catalogue = catalogue
         self._renderer = renderer
         self._grammar = grammar or Grammar()
+        self._settings = settings
 
     def route(self, line: str) -> ShellResult:
         argv = Lexer.argv(line)
@@ -76,6 +71,13 @@ class CommandRouter:
                 f"[muted]{dropped} demo(s) are gone from the folders, "
                 f"dropped from the book[/muted]"
             )
+
+    def _on_config(self, argv: list[str]) -> ShellResult:
+        if self._settings is None:
+            self._console.print("[warning]config.json is not reachable from here[/warning]")
+            return ShellResult()
+        self._settings.run()
+        return ShellResult()
 
     def _on_clear(self, argv: list[str]) -> ShellResult:
         if self._renderer is not None:

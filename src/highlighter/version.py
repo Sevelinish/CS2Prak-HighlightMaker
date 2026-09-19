@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-__version__ = "1.7.0"
+__version__ = "1.8.0"
 
 VERSION_PATTERN = re.compile(r"(\d+)(?:\.(\d+))?(?:\.(\d+))?")
 TAG_PREFIXES = ("v", "V", "release-", "highlightercs2-")

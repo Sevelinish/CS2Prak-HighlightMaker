@@ -157,6 +157,7 @@ COMMANDS: tuple[ShellCommand, ...] = (
     ShellCommand(("help", "?"), "show what can be typed here"),
     ShellCommand(("demos",), "list the demos found, with map and player count"),
     ShellCommand(("players",), "list the nicknames read out of a demo"),
+    ShellCommand(("config",), "open config.json in an editor inside this console"),
     ShellCommand(("clear", "cls"), "wipe the screen"),
     ShellCommand(("version",), "print the installed version"),
     ShellCommand(("exit", "quit"), "leave the shell"),

@@ -11,6 +11,7 @@ from ..infrastructure.paths import ApplicationPaths
 from ..presentation.banner import Banner
 from ..presentation.theme import build_console
 from .catalogue import DemoCatalogue
+from .config_command import ConfigCommand
 from .history import HISTORY_FILE_NAME, CommandHistory
 from .plain import PlainPrompt
 from .prompt import LinePrompt
@@ -54,6 +55,9 @@ class ShellSession:
             runner=ShellRunner(self._console, self._catalogue),
             catalogue=self._catalogue,
             renderer=self._renderer,
+            settings=ConfigCommand(
+                self._console, self._paths.config_file, self._editing
+            ),
         )
 
     def run(self) -> int:

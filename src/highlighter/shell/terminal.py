@@ -15,10 +15,17 @@ PROMPT_STYLE = f"{CSI}1;35m"
 GHOST_STYLE = f"{CSI}38;5;244m"
 HINT_STYLE = f"{CSI}38;5;240m"
 
+ENTER_FULL_SCREEN = f"{CSI}?1049h"
+LEAVE_FULL_SCREEN = f"{CSI}?1049l"
+HIDE_CURSOR = f"{CSI}?25l"
+SHOW_CURSOR = f"{CSI}?25h"
+
 VIRTUAL_TERMINAL_PROCESSING = 0x0004
 STANDARD_OUTPUT = -11
 FALLBACK_WIDTH = 100
+FALLBACK_HEIGHT = 30
 MINIMUM_WIDTH = 40
+MINIMUM_HEIGHT = 8
 
 
 class Terminal:
@@ -33,6 +40,14 @@ class Terminal:
             return FALLBACK_WIDTH
         return max(MINIMUM_WIDTH, columns)
 
+    @property
+    def height(self) -> int:
+        try:
+            rows = shutil.get_terminal_size(fallback=(FALLBACK_WIDTH, FALLBACK_HEIGHT)).lines
+        except (OSError, ValueError):
+            return FALLBACK_HEIGHT
+        return max(MINIMUM_HEIGHT, rows)
+
     def write(self, text: str) -> None:
         self._stream.write(text)
 
@@ -46,6 +61,10 @@ class Terminal:
         if index <= 0:
             return CARRIAGE_RETURN
         return f"{CARRIAGE_RETURN}{CSI}{index}C"
+
+    @staticmethod
+    def position(row: int, column: int) -> str:
+        return f"{CSI}{max(1, row)};{max(1, column)}H"
 
 
 class TerminalCapabilities:

@@ -18,6 +18,14 @@ class Key(Enum):
     END = "end"
     WORD_LEFT = "word_left"
     WORD_RIGHT = "word_right"
+    PAGE_UP = "page_up"
+    PAGE_DOWN = "page_down"
+    DOCUMENT_START = "document_start"
+    DOCUMENT_END = "document_end"
+    SAVE = "save"
+    EXIT = "exit"
+    UNDO = "undo"
+    REDO = "redo"
     DELETE_WORD = "delete_word"
     DELETE_TO_START = "delete_to_start"
     DELETE_TO_END = "delete_to_end"
@@ -52,11 +60,15 @@ CONTROL_KEYS = {
     "\x05": Key.END,
     "\x03": Key.INTERRUPT,
     "\x04": Key.END_OF_INPUT,
-    "\x1a": Key.END_OF_INPUT,
     "\x0b": Key.DELETE_TO_END,
     "\x0c": Key.CLEAR_SCREEN,
     "\x15": Key.DELETE_TO_START,
     "\x17": Key.DELETE_WORD,
+    "\x0f": Key.SAVE,
+    "\x13": Key.SAVE,
+    "\x18": Key.EXIT,
+    "\x19": Key.REDO,
+    "\x1a": Key.UNDO,
     "\x1b": Key.ESCAPE,
 }
 
@@ -70,6 +82,10 @@ WINDOWS_EXTENDED_KEYS = {
     "S": Key.DELETE,
     "s": Key.WORD_LEFT,
     "t": Key.WORD_RIGHT,
+    "I": Key.PAGE_UP,
+    "Q": Key.PAGE_DOWN,
+    "w": Key.DOCUMENT_START,
+    "u": Key.DOCUMENT_END,
 }
 
 ESCAPE_SEQUENCE_KEYS = {
@@ -86,6 +102,10 @@ ESCAPE_SEQUENCE_KEYS = {
     "[3~": Key.DELETE,
     "[1;5C": Key.WORD_RIGHT,
     "[1;5D": Key.WORD_LEFT,
+    "[5~": Key.PAGE_UP,
+    "[6~": Key.PAGE_DOWN,
+    "[1;5H": Key.DOCUMENT_START,
+    "[1;5F": Key.DOCUMENT_END,
 }
 
 WINDOWS_EXTENDED_PREFIXES = ("\x00", "\xe0")

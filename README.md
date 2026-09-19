@@ -32,6 +32,7 @@ demo.dem  ->  parse  ->  detect  ->  table in the console  ->  pick moments
 * `-enemy` adds the same moment from each victim's eyes to the end of the clip
 * A prompt inside the program: start the exe, type the arguments there, with grey suggestions as you type
 * Every new demo is read once and remembered: its map and its roster, so `-p` completes real nicknames
+* A full screen editor for `config.json` inside the console, with JSON colouring and a check before it saves
 * A JSON plugin API, written for CS2Prak-Launcher, that drives the whole pipeline from another program
 
 ## Quick start
@@ -213,6 +214,50 @@ is read right then, once.
 `players` prints the same list as a table with SteamID64 next to each name, for when you want to
 look before you type.
 
+### Editing the config
+
+`config` opens `config.json` in a full screen editor without leaving the console:
+
+```
+ D:\HighlighterCS2\config.json                                          modified
+  1 | {
+  2 |   "version": 18,
+  3 |   "debug": false,
+  4 |   "paths": {
+  5 |     "cs2Directory": "",
+ ...
+ Ctrl+S saves, Ctrl+X leaves                                  line 3, column 12
+ Ctrl+S save   Ctrl+X leave   Ctrl+Z undo   Ctrl+Y redo   Ctrl+K cut to end
+```
+
+Keys, numbers, `true`, `false` and `null` are coloured apart, the line the cursor is on is
+marked in the gutter, and long lines scroll sideways. Arrows, Home, End, Page Up, Page Down,
+Ctrl+Left and Ctrl+Right move around, Ctrl+Home and Ctrl+End jump to the ends of the file,
+Ctrl+W deletes a word, Ctrl+K cuts to the end of the line, Tab inserts two spaces, and Enter
+keeps the indentation of the line it split.
+
+Nothing reaches the disk until it is known to be good. Ctrl+S first parses the text as JSON,
+and then hands the result to the same schema the program loads at startup. A missing comma
+stops the save, the message says what is wrong and on which line, and the cursor jumps there:
+
+```
+ Expecting ',' delimiter at line 9                              line 9, column 5
+```
+
+A value of the wrong kind, `"fps": "sixty"` for instance, is caught the same way. Only when
+both checks pass is the file written, and it is written to a temporary file next to it and then
+swapped in, so a half written `config.json` cannot happen. Line endings are kept as they were.
+
+Leaving with unsaved changes asks first: `y` saves, `n` throws the changes away, anything else
+goes back to editing. Ctrl+Z and Ctrl+Y walk through what you did.
+
+Settings the schema does not know are not an error, but they are pointed out after saving,
+because the next run rewrites the file from the schema and drops them:
+
+```
+1 setting(s) are not part of the schema and the next run will drop them: madeUp
+```
+
 ### Keys
 
 | Key | What it does |
@@ -227,7 +272,7 @@ look before you type.
 | Ctrl+L | wipe the screen |
 | Esc | clear the line |
 | Ctrl+C | clear the line, or leave when the line is already empty |
-| Ctrl+D, Ctrl+Z | leave |
+| Ctrl+D | leave |
 
 ### Words it understands on its own
 
@@ -237,6 +282,7 @@ look before you type.
 | `help`, `?` | prints every argument, key and example |
 | `demos` | reads any new demos, then lists them with map and player count |
 | `players [demo]` | lists the nicknames read out of a demo, or out of all of them |
+| `config` | opens `config.json` in an editor inside this console |
 | `clear`, `cls` | wipes the screen |
 | `version` | prints the installed version |
 | `exit`, `quit` | leaves |
@@ -784,6 +830,10 @@ Segments are recorded as separate files and joined by ffmpeg through the concat 
 
 ## Configuration
 
+Type `config` in the prompt to edit `config.json` in the console, see
+[Editing the config](#editing-the-config). Any other text editor works too, the file is plain
+JSON and is read fresh on every run.
+
 `config.json` is created next to the program on the first run. Missing keys are filled in, your values are left alone.
 
 The `version` key is the schema version. When it grows, migrations run: only the keys whose format changed are rewritten, the rest of your settings survive. The repository carries a `config.example.json` template, while `config.json` itself stays out of git so your local paths do not leak.
@@ -1081,6 +1131,13 @@ src/highlighter/
 ├── cli.py               command line parsing
 ├── entrypoint.py        turning parsed arguments into a run
 ├── version.py           the version everything reports and compares against
+├── editor/              the full screen editor the prompt opens for config.json
+│   ├── buffer.py        the text being edited, lines and cursor
+│   ├── screen.py        the frame: title bar, gutter, text, status, help
+│   ├── highlight.py     colouring JSON a line at a time
+│   ├── validator.py     parse and schema check before anything is written
+│   ├── viewport.py      history.py  theme.py
+│   └── editor.py        config_editor.py  the loop and the config.json wiring
 ├── library/             what the program remembers about each demo
 │   ├── profile.py       the map, the roster and how a demo is keyed
 │   ├── inspector.py     reading a header and a player table, or a parsed match
@@ -1162,7 +1219,7 @@ To add your own detection rule: subclass `HighlightRule`, set `name`, add the cl
 .venv\Scripts\python -m pytest
 ```
 
-Over seven hundred tests. They cover argument parsing, demo lookup, detection and scoring, segmentation, the guard against seek loops, mirv script generation, encoder selection, config migrations, HLAE install integrity, watching the game process, the demo index and its nickname lookup, and the prompt with its line editing and suggestions.
+Nearly eight hundred tests. They cover argument parsing, demo lookup, detection and scoring, segmentation, the guard against seek loops, mirv script generation, encoder selection, config migrations, HLAE install integrity, watching the game process, the demo index and its nickname lookup, the config editor with its buffer, viewport, colouring and validation, and the prompt with its line editing and suggestions.
 
 ## Requirements
 

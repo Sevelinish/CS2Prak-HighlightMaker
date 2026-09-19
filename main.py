@@ -7,7 +7,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 from highlighter.cli import CommandLine
 from highlighter.entrypoint import EntryPoint
-from highlighter.shell import ShellLauncher, ShellSession
+from highlighter.shell.launcher import ShellLauncher
+from highlighter.shell.session import ShellSession
 
 
 def main() -> int:
