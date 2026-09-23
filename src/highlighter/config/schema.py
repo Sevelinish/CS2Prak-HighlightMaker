@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
-CONFIG_VERSION = 18
+CONFIG_VERSION = 19
 
 DEFAULT_TAG_WEIGHTS: dict[str, float] = {
     "kills_2": 4.0,
@@ -594,7 +594,9 @@ class ToolchainConfig:
     ffmpeg_download_url: str = (
         "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
     )
+    ffmpeg_version_url: str = "https://www.gyan.dev/ffmpeg/builds/release-version"
     download_timeout_seconds: int = 600
+    version_check_timeout_seconds: int = 15
 
     @classmethod
     def from_mapping(cls, source: Mapping[str, Any]) -> "ToolchainConfig":
@@ -609,8 +611,18 @@ class ToolchainConfig:
             ffmpeg_download_url=str(
                 _read(source, "ffmpegDownloadUrl", default.ffmpeg_download_url)
             ),
+            ffmpeg_version_url=str(
+                _read(source, "ffmpegVersionUrl", default.ffmpeg_version_url)
+            ),
             download_timeout_seconds=int(
                 _read(source, "downloadTimeoutSeconds", default.download_timeout_seconds)
+            ),
+            version_check_timeout_seconds=int(
+                _read(
+                    source,
+                    "versionCheckTimeoutSeconds",
+                    default.version_check_timeout_seconds,
+                )
             ),
         )
 
@@ -621,7 +633,9 @@ class ToolchainConfig:
             "hlaeReleaseApiUrl": self.hlae_release_api_url,
             "hlaeAssetPattern": self.hlae_asset_pattern,
             "ffmpegDownloadUrl": self.ffmpeg_download_url,
+            "ffmpegVersionUrl": self.ffmpeg_version_url,
             "downloadTimeoutSeconds": self.download_timeout_seconds,
+            "versionCheckTimeoutSeconds": self.version_check_timeout_seconds,
         }
 
 

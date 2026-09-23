@@ -33,6 +33,7 @@ demo.dem  ->  parse  ->  detect  ->  table in the console  ->  pick moments
 * A prompt inside the program: start the exe, type the arguments there, with grey suggestions as you type
 * Every new demo is read once and remembered: its map and its roster, so `-p` completes real nicknames
 * A full screen editor for `config.json` inside the console, with JSON colouring and a check before it saves
+* `tools` lists HLAE and ffmpeg with their versions and asks the release pages whether newer ones are out
 * A JSON plugin API, written for CS2Prak-Launcher, that drives the whole pipeline from another program
 
 ## Quick start
@@ -258,6 +259,38 @@ because the next run rewrites the file from the schema and drops them:
 1 setting(s) are not part of the schema and the next run will drop them: madeUp
 ```
 
+### Checking the toolchain
+
+`tools` shows what HLAE and ffmpeg you are actually running and whether newer builds exist:
+
+```
+Tools
+Tool    Installed  Newest
+HLAE    2.192.3    2.192.3  up to date
+ffmpeg  9.0.2      9.0.2    up to date
+
+Where they are
+Tool    Path                                            Found
+HLAE    D:\HighlighterCS2	ools\hlae\HLAE.exe           tools folder
+ffmpeg  D:\HighlighterCS2	oolsfmpegfmpeg-9.0.2..   tools folder
+```
+
+The installed versions are read without launching anything. HLAE carries its version in the
+executable itself, which is where it is read from, and ffmpeg is asked with `ffmpeg -version`.
+Launching HLAE would open its window, so it is never started for this.
+
+The newest versions come from the same places the downloader uses: the GitHub releases API for
+HLAE, and the version file the ffmpeg build publishes next to its archive
+(`toolchain.ffmpegVersionUrl`). Both have their own short timeout,
+`toolchain.versionCheckTimeoutSeconds`, so a slow network holds the prompt for seconds, not
+minutes. When a check cannot be made the row says so instead of guessing.
+
+Four things can be reported. A tool that is not there yet installs itself on the next recording
+run. A tool whose files are incomplete is named along with what is missing. A tool that is
+behind is named along with the folder to delete, after which one recording run pulls the new one
+down. And a tool you pointed at yourself, through `config.json` or your `PATH`, is left alone
+with a note saying so, because the program did not install it and will not replace it.
+
 ### Keys
 
 | Key | What it does |
@@ -283,6 +316,7 @@ because the next run rewrites the file from the schema and drops them:
 | `demos` | reads any new demos, then lists them with map and player count |
 | `players [demo]` | lists the nicknames read out of a demo, or out of all of them |
 | `config` | opens `config.json` in an editor inside this console |
+| `tools` | shows HLAE and ffmpeg, and checks whether newer builds are out |
 | `clear`, `cls` | wipes the screen |
 | `version` | prints the installed version |
 | `exit`, `quit` | leaves |
@@ -984,7 +1018,9 @@ The `consoleVariables` and `steamEnvironment` maps **merge** with the defaults r
 | `hlaeReleaseApiUrl` | advancedfx GitHub API | Where the latest release comes from |
 | `hlaeAssetPattern` | `hlae_*.zip` | Which asset to download from that release |
 | `ffmpegDownloadUrl` | gyan.dev build | Where ffmpeg comes from |
+| `ffmpegVersionUrl` | gyan.dev version file | What `tools` compares the installed ffmpeg against |
 | `downloadTimeoutSeconds` | `600` | Download timeout |
+| `versionCheckTimeoutSeconds` | `15` | Timeout for the version checks `tools` makes |
 
 The HLAE install is checked for integrity before every run. If `AfxHook.dat`, `injector.exe` or the hook library went missing (an interrupted download, antivirus, a bad extraction), the folder is wiped and HLAE is reinstalled, instead of throwing a cryptic `AfxError #1002`.
 
@@ -1064,6 +1100,10 @@ The slot is read from the demo. `spec_player` accepts a name as well, but a slot
 | `clean` | Nothing at all, the frame is captured before the interface is drawn |
 | `full` | The normal in-game interface |
 
+Everything under `game.consoleVariables` is written after these, so a value you put there wins
+over the one the capture mode picked. That is the way to keep a cvar CS2 changed the meaning of
+without waiting for a new build of this program.
+
 In `crosshair` mode the stock moviemaking cvars do the work:
 
 ```
@@ -1138,6 +1178,11 @@ src/highlighter/
 │   ├── validator.py     parse and schema check before anything is written
 │   ├── viewport.py      history.py  theme.py
 │   └── editor.py        config_editor.py  the loop and the config.json wiring
+├── tooling/             what HLAE and ffmpeg are installed, and what is newest
+│   ├── probe.py         reading a version out of an exe, or out of its own output
+│   ├── inventory.py     where each tool is and whether it is whole
+│   ├── latest.py        asking the release pages
+│   └── check.py         report.py  command.py
 ├── library/             what the program remembers about each demo
 │   ├── profile.py       the map, the roster and how a demo is keyed
 │   ├── inspector.py     reading a header and a player table, or a parsed match

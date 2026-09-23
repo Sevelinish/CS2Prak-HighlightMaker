@@ -224,18 +224,16 @@ class MirvScriptBuilder:
         return f"{PASS_SCRIPT_PREFIX}{number:02d}"
 
     def _session_script(self, plan: RecordingPlan, schedule: list[ScheduledSegment]) -> str:
-        lines = [f"{name} {value}" for name, value in self._game.console_variables.items()]
-        lines.extend(
-            [
-                f"host_timescale {self._recording.playback_speed:g}",
-                f"mirv_streams settings add ffmpeg {STREAM_SETTINGS_NAME} "
-                f'"{self._ffmpeg_arguments()}"',
-                *self._capture_setup(),
-                "mirv_streams record startMovieWav 1",
-                f"mirv_streams record fps {self._recording.fps}",
-                "mirv_cmd clear",
-            ]
-        )
+        lines = [
+            f"host_timescale {self._recording.playback_speed:g}",
+            f"mirv_streams settings add ffmpeg {STREAM_SETTINGS_NAME} "
+            f'"{self._ffmpeg_arguments()}"',
+            *self._capture_setup(),
+            "mirv_streams record startMovieWav 1",
+            f"mirv_streams record fps {self._recording.fps}",
+            *self._console_variables(),
+            "mirv_cmd clear",
+        ]
 
         if schedule:
             lines.append(f"mirv_cmd addAtTick {BOOTSTRAP_TICK} exec {SEEK_SCRIPT_NAME}")
@@ -258,6 +256,9 @@ class MirvScriptBuilder:
             )
 
         return self._join(lines)
+
+    def _console_variables(self) -> list[str]:
+        return [f"{name} {value}" for name, value in self._game.console_variables.items()]
 
     def _capture_setup(self) -> list[str]:
         if self._recording.capture_mode == CLEAN_CAPTURE_MODE:

@@ -352,6 +352,20 @@ class QuitScriptMigration(ConfigMigration):
         raw.setdefault("game", {}).setdefault("closeGraceSeconds", 30)
 
 
+class ToolVersionCheckMigration(ConfigMigration):
+    version = 19
+    reason = "the prompt can now list the installed tools and ask whether newer ones exist"
+    SETTINGS = {
+        "ffmpegVersionUrl": "https://www.gyan.dev/ffmpeg/builds/release-version",
+        "versionCheckTimeoutSeconds": 15,
+    }
+
+    def apply(self, raw: dict[str, Any]) -> None:
+        toolchain = raw.setdefault("toolchain", {})
+        for key, value in self.SETTINGS.items():
+            toolchain.setdefault(key, value)
+
+
 MIGRATIONS: tuple[ConfigMigration, ...] = (
     Cs2CustomLoaderMigration(),
     Cs2ClipQualityMigration(),
@@ -370,6 +384,7 @@ MIGRATIONS: tuple[ConfigMigration, ...] = (
     SpawnThrowMigration(),
     EnemyViewMigration(),
     QuitScriptMigration(),
+    ToolVersionCheckMigration(),
 )
 CURRENT_VERSION = max((migration.version for migration in MIGRATIONS), default=INITIAL_VERSION)
 

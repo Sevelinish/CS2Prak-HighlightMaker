@@ -8,6 +8,7 @@ from .grammar import Grammar
 from .help_view import DemoListView, HelpView, PlayerListView, VersionView
 from .reading import NO_BUDGET, NewDemoReader
 from .renderer import LineRenderer
+from ..tooling import ToolsCommand
 from .runner import ShellResult, ShellRunner
 from .tokens import Lexer
 
@@ -78,6 +79,9 @@ class CommandRouter:
             return ShellResult()
         self._settings.run()
         return ShellResult()
+
+    def _on_tools(self, argv: list[str]) -> ShellResult:
+        return ShellResult(exit_code=ToolsCommand(self._console).run())
 
     def _on_clear(self, argv: list[str]) -> ShellResult:
         if self._renderer is not None:
