@@ -16,6 +16,7 @@ EPILOG = """examples:
   HighlighterCS2 match.dem -p -n1clxe     names starting with a dash are fine
   HighlighterCS2 match.dem -p 76561198000000000
   HighlighterCS2 match.dem -enemy         then replay every kill from the victim's eyes
+  HighlighterCS2 match.dem -true-view     the player's own screen, with team voice chat
   HighlighterCS2 match.dem -one-file      join the picked moments into one video
   HighlighterCS2 match.dem -exit0         leave the game running for the next batch
   HighlighterCS2 -update                  install the newest release, keeping clips and config
@@ -45,6 +46,7 @@ UPDATE_FLAGS = ("-update", "--update")
 DEMO_GET_FLAGS = ("-demoget", "--demoget")
 FLY_FLAGS = ("-fly", "--fly")
 ENEMY_FLAGS = ("-enemy", "--enemy")
+TRUE_VIEW_FLAGS = ("-true-view", "--true-view", "--trueview")
 SHELL_FLAGS = ("-shell", "--shell")
 NO_SHELL_FLAGS = ("-no-shell", "--no-shell")
 MODE_FLAGS = ("-m", "--mode")
@@ -69,6 +71,7 @@ KNOWN_FLAGS = frozenset(
         *DEMO_GET_FLAGS,
         *FLY_FLAGS,
         *ENEMY_FLAGS,
+        *TRUE_VIEW_FLAGS,
         *SHELL_FLAGS,
         *NO_SHELL_FLAGS,
         *MODE_FLAGS,
@@ -178,6 +181,12 @@ class CommandLine:
             dest="enemy",
             action="store_true",
             help="replay each kill from the victim's own eyes after the player view",
+        )
+        parser.add_argument(
+            *TRUE_VIEW_FLAGS,
+            dest="true_view",
+            action="store_true",
+            help="film the clip the way the player saw it, with the demo voice chat",
         )
         parser.add_argument(
             *FLY_FLAGS,

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
-CONFIG_VERSION = 19
+CONFIG_VERSION = 20
 
 DEFAULT_TAG_WEIGHTS: dict[str, float] = {
     "kills_2": 4.0,
@@ -103,6 +103,10 @@ class RecordingConfig:
     playback_speed: float = 1.0
     skip_dead_time: bool = True
     capture_mode: str = "crosshair"
+    true_view: bool = False
+    voice_chat: str = "off"
+    voice_volume: float = 1.4
+    voice_gap_seconds: float = 0.25
     show_killfeed: bool = True
     close_game_when_done: bool = True
     open_output_folder: bool = True
@@ -140,6 +144,12 @@ class RecordingConfig:
             playback_speed=float(_read(source, "playbackSpeed", default.playback_speed)),
             skip_dead_time=bool(_read(source, "skipDeadTime", default.skip_dead_time)),
             capture_mode=str(_read(source, "captureMode", default.capture_mode)),
+            true_view=bool(_read(source, "trueView", default.true_view)),
+            voice_chat=str(_read(source, "voiceChat", default.voice_chat)),
+            voice_volume=float(_read(source, "voiceVolume", default.voice_volume)),
+            voice_gap_seconds=float(
+                _read(source, "voiceGapSeconds", default.voice_gap_seconds)
+            ),
             show_killfeed=bool(_read(source, "showKillfeed", default.show_killfeed)),
             close_game_when_done=bool(
                 _read(source, "closeGameWhenDone", default.close_game_when_done)
@@ -192,6 +202,10 @@ class RecordingConfig:
             "playbackSpeed": self.playback_speed,
             "skipDeadTime": self.skip_dead_time,
             "captureMode": self.capture_mode,
+            "trueView": self.true_view,
+            "voiceChat": self.voice_chat,
+            "voiceVolume": self.voice_volume,
+            "voiceGapSeconds": self.voice_gap_seconds,
             "showKillfeed": self.show_killfeed,
             "closeGameWhenDone": self.close_game_when_done,
             "openOutputFolder": self.open_output_folder,

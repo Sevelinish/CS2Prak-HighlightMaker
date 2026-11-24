@@ -366,6 +366,25 @@ class ToolVersionCheckMigration(ConfigMigration):
             toolchain.setdefault(key, value)
 
 
+class TrueViewMigration(ConfigMigration):
+    version = 20
+    reason = (
+        "a clip can now be filmed the way the player saw it, "
+        "with the voice chat of the demo mixed in"
+    )
+    SETTINGS = {
+        "trueView": False,
+        "voiceChat": "off",
+        "voiceVolume": 1.4,
+        "voiceGapSeconds": 0.25,
+    }
+
+    def apply(self, raw: dict[str, Any]) -> None:
+        recording = raw.setdefault("recording", {})
+        for key, value in self.SETTINGS.items():
+            recording.setdefault(key, value)
+
+
 MIGRATIONS: tuple[ConfigMigration, ...] = (
     Cs2CustomLoaderMigration(),
     Cs2ClipQualityMigration(),
@@ -385,6 +404,7 @@ MIGRATIONS: tuple[ConfigMigration, ...] = (
     EnemyViewMigration(),
     QuitScriptMigration(),
     ToolVersionCheckMigration(),
+    TrueViewMigration(),
 )
 CURRENT_VERSION = max((migration.version for migration in MIGRATIONS), default=INITIAL_VERSION)
 

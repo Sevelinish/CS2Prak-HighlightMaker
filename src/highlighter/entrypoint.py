@@ -35,6 +35,7 @@ class EntryPoint:
             keep_game_open=arguments.keep_game_open,
             fly=arguments.fly,
             enemy=arguments.enemy,
+            true_view=arguments.true_view,
             verbose=arguments.verbose,
             show_banner=show_banner,
         ).run()

@@ -39,8 +39,11 @@ from .presentation.summary import RunSummary
 from .presentation.theme import build_console
 from .provisioning.toolchain import ToolchainProvisioner
 from .recording.session import RecordingSession
+from .recording.true_view import TrueViewProfile
 from .recording.warm_session import WarmSession
 from .update.service import UpdateService
+from .voice.mixer import VoiceMixer
+from .voice.overlay import VoiceOverlay
 
 BASE_STEPS = 7
 PLAYER_LOOKUP_STEP = 1
@@ -58,6 +61,7 @@ class Application:
         keep_game_open: bool = False,
         fly: bool = False,
         enemy: bool = False,
+        true_view: bool = False,
         verbose: bool = False,
         show_banner: bool = True,
     ) -> None:
@@ -70,6 +74,7 @@ class Application:
         self._keep_game_open = keep_game_open
         self._fly = fly
         self._enemy = enemy
+        self._true_view = true_view
         self._verbose = verbose
         self._show_banner = show_banner
         self._logger = LoggingConfigurator(self._paths.logs, verbose).configure()
@@ -112,6 +117,9 @@ class Application:
             config.nades.follow_flight = True
         if self._enemy:
             config.recording.record_enemy_view = True
+        if self._true_view:
+            config.recording.true_view = True
+        TrueViewProfile.apply(config.recording)
         if repository.migrated:
             self._console.print(
                 f"[muted]config.json upgraded to version {CONFIG_VERSION}[/muted]"
@@ -146,7 +154,7 @@ class Application:
             plan = self._highlight_plan(match, config, target, reporter)
         if plan is None:
             return EXIT_SUCCESS
-        assembled, reel = self._record(plan, config, installation, reporter)
+        assembled, reel = self._record(plan, match, config, installation, reporter)
         self._open_folder(plan, assembled, config, reporter)
         self._report(assembled, plan, reel)
         return EXIT_SUCCESS
@@ -376,6 +384,7 @@ class Application:
     def _record(
         self,
         plan: RecordingPlan,
+        match: Match,
         config: ApplicationConfig,
         installation: Cs2Installation,
         reporter: StepReporter,
@@ -396,10 +405,36 @@ class Application:
             toolchain=toolchain,
             work_directory=self._paths.resolve(config.paths.work_directory),
             output_root=self._paths.resolve(config.paths.output_directory),
+            voice=self._voice_overlay(match, config, toolchain, reporter),
         )
         assembled = session.execute(plan, reporter)
         self._warm_session = session.warm_session
         return assembled, session.reel
+
+    def _voice_overlay(
+        self,
+        match: Match,
+        config: ApplicationConfig,
+        toolchain,
+        reporter: StepReporter,
+    ) -> VoiceOverlay | None:
+        audience = TrueViewProfile.audience(config.recording)
+        if not audience.is_on:
+            return None
+
+        overlay = VoiceOverlay(
+            match=match,
+            audience=audience,
+            work_directory=self._paths.resolve(config.paths.work_directory),
+            mixer=VoiceMixer(toolchain.ffmpeg, config.recording.voice_volume),
+            gap_seconds=config.recording.voice_gap_seconds,
+        )
+        speakers = overlay.prepare()
+        if speakers:
+            reporter.detail(f"voice chat from {speakers} player(s), {audience.value}")
+        else:
+            reporter.detail("this demo carries no voice chat")
+        return overlay
 
     def _open_folder(
         self,

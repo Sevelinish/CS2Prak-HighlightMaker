@@ -5,8 +5,9 @@ from pathlib import Path
 
 from ..config.schema import GameConfig, RecordingConfig
 from ..media.encoders import EncoderProfile
-from .campath import CampathDocument
 from ..plan.models import CameraBeat, ClipPlayer, ClipSegment, ClipSpec, RecordingPlan
+from .campath import CampathDocument
+from .true_view import TrueViewProfile
 
 SESSION_SCRIPT_NAME = "highlighter_session"
 SEEK_SCRIPT_NAME = "highlighter_seek"
@@ -26,6 +27,7 @@ QUIT_DELAY_SECONDS = 3.0
 STREAM_SETTINGS_NAME = "highlighterFfmpeg"
 VIDEO_FILE_STEM = "video"
 CLEAN_STREAM_NAME = "highlighterClean"
+SILENT_GAME_VOICE = 0
 CLEAN_CAPTURE_MODE = "clean"
 CROSSHAIR_CAPTURE_MODE = "crosshair"
 BOOTSTRAP_TICK = 64
@@ -231,6 +233,7 @@ class MirvScriptBuilder:
             *self._capture_setup(),
             "mirv_streams record startMovieWav 1",
             f"mirv_streams record fps {self._recording.fps}",
+            *self._voice_setup(),
             *self._console_variables(),
             "mirv_cmd clear",
         ]
@@ -256,6 +259,11 @@ class MirvScriptBuilder:
             )
 
         return self._join(lines)
+
+    def _voice_setup(self) -> list[str]:
+        if not TrueViewProfile.audience(self._recording).is_on:
+            return []
+        return [f"snd_voipvolume {SILENT_GAME_VOICE}"]
 
     def _console_variables(self) -> list[str]:
         return [f"{name} {value}" for name, value in self._game.console_variables.items()]

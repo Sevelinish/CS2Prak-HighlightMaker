@@ -100,3 +100,21 @@ def test_an_old_config_gains_the_killfeed(tmp_path):
     assert config.recording.show_killfeed is True
     assert config.recording.fps == 120
     assert json.loads(config_file.read_text(encoding="utf-8"))["version"] == CURRENT_VERSION
+
+
+def test_the_player_view_keeps_the_whole_interface(match):
+    content = session(match, capture_mode="pov")
+
+    assert "mirv_streams record screen enabled 1" in content
+    assert "cl_drawhud 1" in content
+    assert "cl_draw_only_deathnotices 0" in content
+
+
+def test_the_game_voice_is_muted_when_we_mix_it_ourselves(match):
+    content = session(match, capture_mode="pov", voice_chat="team")
+
+    assert "snd_voipvolume 0" in content
+
+
+def test_the_game_voice_is_left_alone_without_voice_chat(match):
+    assert "snd_voipvolume" not in session(match)

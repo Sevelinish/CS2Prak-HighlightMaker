@@ -88,6 +88,10 @@ OPTIONS: tuple[Option, ...] = (
         summary="replay each kill from the victim's own eyes",
     ),
     Option(
+        flags=("-true-view", "--true-view", "--trueview"),
+        summary="film it the way the player saw it, with the demo voice chat",
+    ),
+    Option(
         flags=("-fly", "--fly"),
         summary="follow the grenade from the throw to the detonation",
     ),

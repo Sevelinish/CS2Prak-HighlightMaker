@@ -12,6 +12,7 @@ from ..game.installation import Cs2Installation
 from ..infrastructure.logging import get_logger
 from ..infrastructure.progress import ProgressReporter
 from ..media.assembler import AssembledClip, ClipAssembler
+from ..voice.overlay import VoiceOverlay
 from ..media.crosshair import CrosshairFilterBuilder
 from ..media.encoders import EncoderProfile, EncoderSelector
 from ..media.output_library import OutputLibrary
@@ -56,6 +57,7 @@ class RecordingSession:
         toolchain: Toolchain,
         work_directory: Path,
         output_root: Path,
+        voice: VoiceOverlay | None = None,
     ) -> None:
         self._console = console
         self._config = config
@@ -63,6 +65,7 @@ class RecordingSession:
         self._toolchain = toolchain
         self._work_directory = work_directory
         self._output_root = output_root
+        self._voice = voice
         self._store = WarmSessionStore(work_directory)
         self._reel: Reel | None = None
         self._warm_session: WarmSession | None = None
@@ -450,6 +453,7 @@ class RecordingSession:
             take_directory=take_directory,
             library=library,
             video_filter=CrosshairFilterBuilder(self._config.crosshair).build(),
+            voice=self._voice,
         )
         return assembler.assemble(plan)
 

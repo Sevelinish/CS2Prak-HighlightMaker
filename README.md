@@ -30,6 +30,7 @@ demo.dem  ->  parse  ->  detect  ->  table in the console  ->  pick moments
 * `-demoget` finds new demos in Downloads, unpacks them and files them under a name you choose
 * `-fly` puts the camera behind the grenade and follows it from the throw to the detonation
 * `-enemy` adds the same moment from each victim's eyes to the end of the clip
+* `-true-view` films the clip with the player's own interface and mixes the demo voice chat in
 * A prompt inside the program: start the exe, type the arguments there, with grey suggestions as you type
 * Every new demo is read once and remembered: its map and its roster, so `-p` completes real nicknames
 * A full screen editor for `config.json` inside the console, with JSON colouring and a check before it saves
@@ -82,6 +83,7 @@ The result lands in `dist/HighlighterCS2/`. Rebuilding leaves the downloaded too
 | `HighlighterCS2.exe match.dem -m nades` | Every grenade of every kind |
 | `HighlighterCS2.exe match.dem -m nades_smoke -fly` | Fly behind each smoke until it opens |
 | `HighlighterCS2.exe match.dem -enemy` | Then replay every kill from the victim's eyes |
+| `HighlighterCS2.exe match.dem -true-view` | The player's own screen, with their team's voice chat |
 | `HighlighterCS2.exe match.dem -one-file` | Join the picked moments into a single video |
 | `HighlighterCS2.exe match.dem -exit0` | Leave the game running so the next batch skips the startup |
 | `HighlighterCS2.exe -update` | Install the newest release, keeping clips and settings |
@@ -831,6 +833,57 @@ first entry, so nothing can retrigger the callback that caused the rewind.
 Recording takes longer, because the demo is replayed once per pass. `-enemy` applies to
 highlights only, grenade modes ignore it.
 
+## The player's own view
+
+`-true-view` films the clip the way the person at the keyboard saw it: their interface, their
+first person camera, and the voice chat that was said around them.
+
+Three things change at once, and each of them is a setting you can keep on for good:
+
+| Setting | What `-true-view` sets it to |
+| --- | --- |
+| `recording.trueView` | `true` |
+| `recording.captureMode` | `pov`, the whole in-game interface instead of the bare crosshair |
+| `recording.spectatorMode` | `first_person` |
+| `recording.voiceChat` | `team`, unless you already chose something else |
+
+The interface is the real one: ammunition, health, the radar, the round timer, the money, the
+kill feed. It is what the demo draws for a first person spectator, so it is as close to the
+player's screen as a demo gets.
+
+### The voice chat
+
+The voice is taken out of the demo itself, not recorded off the game. A demo carries every
+spoken packet with the tick it was said on and the SteamID of who said it, which is how the
+clip can hold voice at all: the game plays no voice back while a demo is being filmed for a
+spectator, and even if it did, there would be no way to choose whose.
+
+The packets are Opus frames, ten milliseconds each. They are gathered into phrases, a phrase
+being a run of packets with no silence longer than `recording.voiceGapSeconds` in it, wrapped
+into an Ogg stream, and handed to ffmpeg, which places each phrase at the second it was spoken
+and mixes it over the game audio. The clip keeps its own length; the voice only rides on top.
+
+Because every phrase is anchored to its own tick, nothing drifts over a long clip, and a phrase
+that began before the clip did is trimmed rather than moved.
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `recording.voiceChat` | `off` | `off`, `team` or `everyone` |
+| `recording.voiceVolume` | `1.4` | How loud the voice sits over the game |
+| `recording.voiceGapSeconds` | `0.25` | The silence that ends one phrase and starts the next |
+
+`team` means the team of whoever the camera is following, decided per segment and per round.
+That is what makes it work with `-enemy`: the player's own part of the clip carries the player's
+team, and each victim's part carries the victim's team, because a segment recorded from the
+victim's eyes is asked about the victim. `everyone` mixes all ten players.
+
+While voice is being mixed, `snd_voipvolume 0` is set in the game, so that if CS2 ever does play
+a demo's voice back, it cannot land in the recording twice.
+
+A demo without voice is not an error. The run says `this demo carries no voice chat` and the
+clip is made as usual. Voice is recorded per match by the server: a FACEIT demo normally has it,
+a Valve matchmaking demo often does not.
+
 ## What ends up in the output folder
 
 Every run writes into `Highlighter/<demo>/`. Without `-one-file` the clips sit there directly.
@@ -909,6 +962,10 @@ The `logs/highlighter.log` file always receives everything down to `DEBUG`, what
 | `postRollSeconds` | `2.5` | How many seconds after the very last kill |
 | `maxClipSeconds` | `90.0` | Hard cap on segment length |
 | `captureMode` | `crosshair` | What ends up in frame, see below |
+| `trueView` | `false` | Same as passing `-true-view` every time |
+| `voiceChat` | `off` | `off`, `team` or `everyone`, see [The player's own view](#the-players-own-view) |
+| `voiceVolume` | `1.4` | How loud the mixed voice chat is |
+| `voiceGapSeconds` | `0.25` | The silence that separates two spoken phrases |
 | `showKillfeed` | `false` | Keep the kill feed in `crosshair` mode |
 | `spectatorMode` | `first_person` | `fixed`, `first_person`, `third_person`, `free` |
 | `spectateCommands` | see below | The camera aiming sequence |
@@ -1098,6 +1155,7 @@ The slot is read from the demo. `spec_player` accepts a name as well, but a slot
 | --- | --- |
 | `crosshair` | The real in-game crosshair and nothing else. The default |
 | `clean` | Nothing at all, the frame is captured before the interface is drawn |
+| `pov` | The whole in-game interface, the way the player saw it. What `-true-view` uses |
 | `full` | The normal in-game interface |
 
 Everything under `game.consoleVariables` is written after these, so a value you put there wins
@@ -1178,6 +1236,12 @@ src/highlighter/
 │   ├── validator.py     parse and schema check before anything is written
 │   ├── viewport.py      history.py  theme.py
 │   └── editor.py        config_editor.py  the loop and the config.json wiring
+├── voice/               the voice chat carried inside the demo
+│   ├── packets.py       the Opus frames, with the tick and who spoke
+│   ├── utterance.py     packets gathered into phrases
+│   ├── ogg.py           wrapping Opus frames into a stream ffmpeg can read
+│   ├── audience.py      whose voice belongs in this segment
+│   └── cues.py          mixer.py  overlay.py
 ├── tooling/             what HLAE and ffmpeg are installed, and what is newest
 │   ├── probe.py         reading a version out of an exe, or out of its own output
 │   ├── inventory.py     where each tool is and whether it is whole

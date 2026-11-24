@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 
 from ..config.schema import EncodingConfig
 from ..infrastructure.logging import get_logger
@@ -12,6 +13,10 @@ from .output_library import OutputLibrary
 
 VIDEO_SUFFIXES = (".mp4", ".mkv", ".mov", ".avi")
 AUDIO_SUFFIXES = (".wav", ".flac")
+
+
+class SegmentAudioSource(Protocol):
+    def apply(self, clip: ClipSpec, segment: ClipSegment, audio: Path) -> Path: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,6 +43,7 @@ class ClipAssembler:
         take_directory: Path,
         library: OutputLibrary,
         video_filter: str = "",
+        voice: SegmentAudioSource | None = None,
     ) -> None:
         self._ffmpeg_executable = ffmpeg_executable
         self._encoding = encoding
@@ -45,6 +51,7 @@ class ClipAssembler:
         self._take_directory = take_directory
         self._library = library
         self._video_filter = video_filter
+        self._voice = voice
         self._muxer = ConcatMuxer(ffmpeg_executable)
         self._logger = get_logger("media")
 
@@ -88,10 +95,25 @@ class ClipAssembler:
                 RecordedSegment(
                     segment=segment,
                     video=video,
-                    audio=self._largest_file(root, AUDIO_SUFFIXES),
+                    audio=self._with_voice(
+                        clip, segment, self._largest_file(root, AUDIO_SUFFIXES)
+                    ),
                 )
             )
         return recorded
+
+    def _with_voice(
+        self, clip: ClipSpec, segment: ClipSegment, audio: Path | None
+    ) -> Path | None:
+        if audio is None or self._voice is None:
+            return audio
+        try:
+            return self._voice.apply(clip, segment, audio)
+        except Exception:
+            self._logger.warning(
+                "Voice could not be mixed into %s", segment.name, exc_info=True
+            )
+            return audio
 
     def _render(
         self, clip: ClipSpec, recorded: list[RecordedSegment], destination: Path
